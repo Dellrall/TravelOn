@@ -1,2 +1,2 @@
 # TravelOn
-Bus transport booking system
+Bus transport booking system for COA assignment
