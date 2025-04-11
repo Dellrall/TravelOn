@@ -23,7 +23,7 @@ INCLUDE Irvine32.inc
     successMsg BYTE "Login Successful!", 0Dh, 0Ah, 0
     asterisk BYTE "*", 0      ; Asterisk character for masking
     MAX_PASSWORD_LENGTH = 20  ; Maximum password length
-    welcomeMsg BYTE "Welcome to TravelOn Bus reservation system.", 0
+    welcomeMsg BYTE "Welcome to TravelOn Bus reservation system, ", 0
 
     ; --- Destination & Date ---
     destPrompt BYTE "Enter Destination (1=Kuala Lumpur, 2=Kuantan, 3=Johor Bahru): ", 0
@@ -77,6 +77,23 @@ INCLUDE Irvine32.inc
     baseFinal WORD 0
     sstAmount WORD 0
     paymentAmount WORD 0
+       paymentMerchantPrompt BYTE "Select Payment Method:", 0Dh, 0Ah
+                         BYTE "1. Visa", 0Dh, 0Ah
+                         BYTE "2. MasterCard", 0Dh, 0Ah
+                         BYTE "3. UnionPay", 0Dh, 0Ah
+                         BYTE "4. American Express", 0Dh, 0Ah
+                         BYTE "Enter choice (1-4): ", 0
+    invalidMerchantMsg BYTE "Invalid selection. Please try again.", 0Dh, 0Ah, 0
+    insufficientMsg BYTE "Insufficient payment amount. Please enter at least RM", 0
+    changeMsg BYTE "Your change: RM", 0
+    merchantChoice BYTE 0
+    selectedMerchant BYTE "Payment Method: ", 0
+    merchantVisa BYTE "Visa", 0
+    merchantMastercard BYTE "MasterCard", 0
+    merchantUnionPay BYTE "UnionPay", 0
+    merchantAmex BYTE "American Express", 0
+    inputAmount DWORD 0
+    changeAmount DWORD 0
 
     ; --- Display Messages ---
     paymentPrompt BYTE "Enter Payment Amount: RM", 0
@@ -554,12 +571,78 @@ save_final:
     call Crlf
     call Crlf
 
-    ; Display payment prompt
-    mov edx, OFFSET paymentPrompt
+     ; Select payment merchant
+merchant_select:
+    mov edx, OFFSET paymentMerchantPrompt
     call WriteString
+    call ReadInt
+    cmp al, 1
+    jl invalid_merchant
+    cmp al, 4
+    jg invalid_merchant
+    mov merchantChoice, al
+    jmp get_payment
+
+invalid_merchant:
+    mov edx, OFFSET invalidMerchantMsg
+    call WriteString
+    jmp merchant_select
+
+get_payment:
+    ; Display total amount again for reference
+    mov edx, OFFSET totalAmountMsg
+    call WriteString
+    movzx eax, paymentAmount
     call print_price
     call Crlf
+
+payment_input:
+    ; Get payment amount
+    mov edx, OFFSET paymentPrompt
+    call WriteString
+    call ReadInt       ; Read integer part (whole ringgit)
+    mov ebx, 100      ; Convert to cents
+    mul ebx           ; EAX = ringgit * 100 (now in cents)
+    mov inputAmount, eax
+
+    ; Compare with required amount
+    movzx ebx, paymentAmount
+    cmp eax, ebx
+    jl insufficient_payment
+
+    ; If we get here, payment is sufficient
+    ; Calculate change
+    sub eax, ebx      ; eax = input - required
+    mov changeAmount, eax
+
+    ; Display change amount if any
+    cmp eax, 0
+    je payment_exact
+    
+    ; Show change amount
+    mov edx, OFFSET changeMsg
+    call WriteString
+    mov eax, changeAmount
+    call print_price   ; This will format it correctly as RM XX.XX
+    call Crlf
+    jmp payment_done
+
+insufficient_payment:
+    mov edx, OFFSET insufficientMsg
+    call WriteString
+    movzx eax, paymentAmount
+    call print_price
+    call Crlf
+    jmp payment_input      ; Ask for payment again
+
+payment_exact:
+    ; Payment is exact amount
+    mov changeAmount, 0    ; Ensure change is zero
+    call Crlf
+
+payment_done:
     ret
+
 payment_processing ENDP
 
 
@@ -617,6 +700,50 @@ info_display PROC
     movzx eax, paymentAmount
     call print_price
     call Crlf
+
+    ; Display payment method
+    mov edx, OFFSET selectedMerchant
+    call WriteString
+    
+    ; Display the selected merchant based on choice
+    movzx eax, merchantChoice
+    cmp al, 1
+    je display_visa
+    cmp al, 2
+    je display_mastercard
+    cmp al, 3
+    je display_unionpay
+    cmp al, 4
+    je display_amex
+    jmp receipt_done            ; Changed from display_payment_amount
+
+display_visa:
+    mov edx, OFFSET merchantVisa
+    jmp show_merchant
+display_mastercard:
+    mov edx, OFFSET merchantMastercard
+    jmp show_merchant
+display_unionpay:
+    mov edx, OFFSET merchantUnionPay
+    jmp show_merchant
+display_amex:
+    mov edx, OFFSET merchantAmex
+
+show_merchant:
+    call WriteString
+    call Crlf
+
+    ; Display change if any
+    mov eax, changeAmount
+    cmp eax, 0
+    je receipt_done
+    mov edx, OFFSET changeMsg
+    call WriteString
+    mov eax, changeAmount
+    call print_price
+    call Crlf
+
+receipt_done:
     ret
 info_display ENDP
 
