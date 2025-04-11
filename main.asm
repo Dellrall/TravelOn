@@ -9,10 +9,10 @@ INCLUDE Irvine32.inc
     successMsg BYTE "Login Successful!", 0Dh, 0Ah, 0
     asterisk BYTE "*", 0      ; Asterisk character for masking
     MAX_PASSWORD_LENGTH = 20  ; Maximum password length
-    welcomeMsg BYTE "Welcome to TravelOn Bus reservation system", 0
+    welcomeMsg BYTE "Welcome to TravelOn Bus reservation system.", 0
 
     ; --- Destination & Date ---
-    destPrompt BYTE "Enter Destination (1=KL, 2=PH, 3=JB): ", 0
+    destPrompt BYTE "Enter Destination (1=Kuala Lumpur, 2=Kuantan, 3=Johor Bahru): ", 0
     datePrompt BYTE "Enter Date (MMDD): ", 0
     destChoice BYTE 0
     dateInput BYTE 5 DUP(0)
@@ -38,6 +38,8 @@ INCLUDE Irvine32.inc
     basePriceEconomy  WORD 3000      ; RM30.00
     discountElderly   WORD 1000      ; RM10.00
     discountKid       WORD 500       ; RM5.00
+    baseTotalMsg    BYTE "Base Total: RM", 0
+    totalAmountMsg  BYTE "Total Amount: RM", 0
     baseFinal WORD 0
     sstAmount WORD 0
     paymentAmount WORD 0
@@ -56,11 +58,27 @@ INCLUDE Irvine32.inc
 .code
 main PROC
     call registration_login
+    call Crlf           ; Add space between modules
+    call Crlf           ; Double space for better visibility
+
     call dest_date_selection
+    call Crlf
+    call Crlf
+
     call service_type_selection
+    call Crlf
+    call Crlf
+
     call promo_application
+    call Crlf
+    call Crlf
+
     call payment_processing
+    call Crlf
+    call Crlf
+
     call info_display
+    call Crlf
     exit
 main ENDP
 
@@ -167,6 +185,8 @@ hash_done:
     ; Success Message
     mov edx, OFFSET successMsg
     call WriteString
+    call Crlf
+    call Crlf
     
     ; Display Welcome Message
     mov edx, OFFSET welcomeMsg
@@ -320,6 +340,13 @@ kid_discount:
 save_final:
     mov baseFinal, ax
 
+    ; Display base amount
+    mov edx, OFFSET baseTotalMsg    ; Changed from inline string
+    call WriteString
+    movzx eax, baseFinal
+    call print_price
+    call Crlf
+
     ; Calculate SST (6%)
     movzx eax, baseFinal
     xor edx, edx
@@ -329,19 +356,35 @@ save_final:
     div ecx              ; EAX = SST
     mov sstAmount, ax
 
+    ; Display SST amount
+    mov edx, OFFSET sstMsg
+    call WriteString
+    movzx eax, sstAmount
+    call print_price
+    call Crlf
+
     ; Total = baseFinal + SST
     movzx eax, baseFinal
     movzx ebx, sstAmount
     add eax, ebx
     mov paymentAmount, ax
 
-    ; Display payment amount
+    ; Display total amount
+    mov edx, OFFSET totalAmountMsg    ; Changed from inline string
+    call WriteString
+    movzx eax, paymentAmount
+    call print_price
+    call Crlf
+    call Crlf
+
+    ; Display payment prompt
     mov edx, OFFSET paymentPrompt
     call WriteString
     call print_price
     call Crlf
     ret
 payment_processing ENDP
+
 
 ; --- Module 6: Display Receipt ---
 info_display PROC
@@ -387,29 +430,40 @@ info_display ENDP
 ; --- Utility: Print RM amount from cents (e.g., 1234 = RM12.34) ---
 print_price PROC
     ; Input: EAX = amount in cents
-    push ax
-    push dx
+    push eax            ; Save original value
+    push ebx            ; Save registers we'll use
+    push edx
 
     xor edx, edx
     mov ebx, 100
     div ebx             ; EAX = RM, EDX = cents
 
+    ; Print the whole number part
     call WriteDec
-    mov dl, '.'
-    call WriteChar
 
+    ; Print decimal point
+    push edx            ; Save cents
+    mov al, '.'         ; Use literal '.' character
+    call WriteChar
+    pop edx            ; Restore cents
+
+    ; Handle cents (add leading zero if needed)
     mov eax, edx
     cmp eax, 10
-    jae print_cents
-    mov dl, '0'
+    jae print_cents    ; If >= 10, print directly
+    
+    ; Add leading zero for single digit cents
+    push eax           ; Save cents
+    mov al, '0'
     call WriteChar
-print_cents:
-    mov eax, edx
-    call WriteDec
+    pop eax           ; Restore cents
 
-    pop dx
-    pop ax
+print_cents:
+    call WriteDec      ; Print cents value
+
+    pop edx            ; Restore registers
+    pop ebx
+    pop eax
     ret
 print_price ENDP
-
 END main
