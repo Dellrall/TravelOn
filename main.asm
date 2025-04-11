@@ -1,179 +1,322 @@
-.model small
-.stack 100h
+INCLUDE Irvine32.inc
+
 .data
-    ; Registration & Login Data
-    username db 20 dup(0), '$'  ; Buffer for username (max 20 chars)
-    password db 20 dup(0), '$'  ; Buffer for password
-    loginMsg db 'Enter Username: $'
-    passMsg  db 'Enter Password: $'
-    successMsg db 'Login Successful!', 0Dh, 0Ah, '$'
+    ; --- Registration & Login ---
+    username BYTE 20 DUP(0)
+    password BYTE 20 DUP(0)
+    loginMsg BYTE "Enter Username: ", 0
+    passMsg  BYTE "Enter Password: ", 0
+    successMsg BYTE "Login Successful!", 0Dh, 0Ah, 0
+    asterisk BYTE "*", 0      ; Asterisk character for masking
+    MAX_PASSWORD_LENGTH = 20  ; Maximum password length
+    welcomeMsg BYTE "Welcome to TravelOn Bus reservation system.", 0
 
-    ; Destination & Date Data
-    destPrompt db 'Enter Destination (1=NY, 2=LA, 3=SF): $'
-    datePrompt db 'Enter Date (MMDD): $'
-    destChoice db 0
-    dateInput db 5 dup(0), '$'  ; MMDD + null
+    ; --- Destination & Date ---
+    destPrompt BYTE "Enter Destination (1=Kuala Lumpur, 2=Kuantan, 3=Johor Bahru): ", 0
+    datePrompt BYTE "Enter Date (MMDD): ", 0
+    destChoice BYTE 0
+    dateInput BYTE 5 DUP(0)
+    destNames BYTE "KL", 0, "PH", 0, "JB", 0
+    invalidDateMsg BYTE "Invalid date format. Please enter MMDD format (e.g., 0411)", 0Dh, 0Ah, 0
+    confirmDateMsg BYTE "Selected date is: ", 0
+    daysOfWeek    BYTE "Sunday", 0, "Monday", 0, "Tuesday", 0, "Wednesday", 0
+              BYTE "Thursday", 0, "Friday", 0, "Saturday", 0
+    dayMsg        BYTE " (", 0
+    dayMsgEnd     BYTE ")", 0Dh, 0Ah, 0
+    confirmPrompt BYTE "Proceed with this date? (1=Yes, 0=No): ", 0
 
-    ; Service Type Data
-    servicePrompt db 'Service Type (1=Business, 2=Economy): $'
-    serviceChoice db 0
+    ; --- Service Type ---
+    servicePrompt BYTE "Service Type (1=Business, 2=Economy): ", 0
+    serviceChoice BYTE 0
 
-    ; Promo Data
-    promoPrompt db 'Apply Promo? (1=Elderly, 2=Kid, 0=None): $'
-    promoChoice db 0
+    ; --- Promo ---
+    promoPrompt BYTE "Apply Promo? (1=Elderly, 2=Kid, 0=None): ", 0
+    promoChoice BYTE 0
 
-    ; Payment Data
-    paymentPrompt db 'Enter Payment Amount: $'
-    paymentAmount dw 0          ; 16-bit for simplicity (e.g., cents)
-    basePriceBusiness dw 5000   ; $50.00 in cents
-    basePriceEconomy  dw 3000   ; $30.00 in cents
-    discountElderly   dw 1000   ; $10.00 off
-    discountKid       dw 500    ; $5.00 off
+    ; --- Pricing ---
+    basePriceBusiness WORD 5000      ; RM50.00
+    basePriceEconomy  WORD 3000      ; RM30.00
+    discountElderly   WORD 1000      ; RM10.00
+    discountKid       WORD 500       ; RM5.00
+    baseTotalMsg    BYTE "Base Total: RM", 0
+    totalAmountMsg  BYTE "Total Amount: RM", 0
+    baseFinal WORD 0
+    sstAmount WORD 0
+    paymentAmount WORD 0
 
-    ; Information Display Data
-    receiptMsg db '----- Receipt -----$'
-    destMsg    db 'Destination: $'
-    seatsMsg   db 'Seat: A1$', 0Dh, 0Ah  ; Hardcoded for simplicity
-    departMsg  db 'Depart: 08:00$', 0Dh, 0Ah
-    arriveMsg  db 'Arrive: 12:00$', 0Dh, 0Ah
-    totalMsg   db 'Total Paid: $'
-    newline    db 0Dh, 0Ah, '$'
-    destNames  db 'NY$', 'LA$', 'SF$'
+    ; --- Display Messages ---
+    paymentPrompt BYTE "Enter Payment Amount: RM", 0
+    receiptMsg BYTE "----- Receipt -----", 0Dh, 0Ah, 0
+    destMsg    BYTE "Destination: ", 0
+    seatsMsg   BYTE "Seat: A1", 0Dh, 0Ah, 0
+    departMsg  BYTE "Depart: 08:00", 0Dh, 0Ah, 0
+    arriveMsg  BYTE "Arrive: 12:00", 0Dh, 0Ah, 0
+    sstMsg     BYTE "SST (6%): RM", 0
+    totalMsg   BYTE "Total Paid: RM", 0
+    newline    BYTE 0Dh, 0Ah, 0
 
 .code
-main proc
-    mov ax, @data
-    mov ds, ax
-
-    ; 1. Registration & Login
+main PROC
     call registration_login
+    call Crlf           ; Add space between modules
+    call Crlf           ; Double space for better visibility
 
-    ; 2. Destination & Date Selection
     call dest_date_selection
+    call Crlf
+    call Crlf
 
-    ; 3. Service Type Selection
     call service_type_selection
+    call Crlf
+    call Crlf
 
-    ; 4. Promo Application
     call promo_application
+    call Crlf
+    call Crlf
 
-    ; 5. Payment
     call payment_processing
+    call Crlf
+    call Crlf
 
-    ; 6. Information Display
     call info_display
+    call Crlf
+    exit
+main ENDP
 
-    ; Exit program
-    mov ah, 4Ch
-    int 21h
-main endp
+; --- Module 1: Registration ---
+registration_login PROC
+    ; Input Username (unchanged)
+    mov edx, OFFSET loginMsg
+    call WriteString
+    mov edx, OFFSET username
+    mov ecx, SIZEOF username
+    call ReadString
 
-; --- Module 1: Registration & Login ---
-registration_login proc
-    ; Prompt for username
-    mov ah, 09h
-    lea dx, loginMsg
-    int 21h
+    ; Check for null username (unchanged)
+    mov al, username
+    cmp al, 0
+    je username_empty
+username_valid:
 
-    ; Input username (simple, no validation here)
-    mov ah, 0Ah
-    lea dx, username
-    int 21h
+    ; Input Password with masking
+    mov edx, OFFSET passMsg
+    call WriteString
+    
+    ; Initialize
+    mov edi, OFFSET password  ; Destination for password
+    xor ecx, ecx             ; Character count
+    
+read_char:
+    call ReadChar            ; Read a single character
+    
+    ; Check if Enter key was pressed (0Dh)
+    cmp al, 0Dh
+    je end_password
+    
+    ; Check if backspace (08h)
+    cmp al, 08h
+    je handle_backspace
+    
+    ; Check if maximum length reached
+    cmp ecx, MAX_PASSWORD_LENGTH
+    jae read_char
+    
+    ; Store character and display asterisk
+    mov [edi], al           ; Store actual character
+    inc edi                 ; Move to next position
+    inc ecx                 ; Increment counter
+    
+    push eax                ; Save actual character
+    mov al, '*'            ; Load asterisk
+    call WriteChar         ; Display asterisk
+    pop eax                ; Restore actual character
+    jmp read_char
 
-    ; Prompt for password
-    mov ah, 09h
-    lea dx, passMsg
-    int 21h
+handle_backspace:
+    ; Handle backspace only if there are characters
+    cmp ecx, 0
+    je read_char
+    
+    ; Move cursor back, write space, move cursor back again
+    dec edi                ; Move back in buffer
+    dec ecx                ; Decrease counter
+    
+    ; Clear last character on screen
+    mov al, 08h           ; Backspace
+    call WriteChar
+    mov al, ' '           ; Space
+    call WriteChar
+    mov al, 08h           ; Backspace
+    call WriteChar
+    jmp read_char
 
-    ; Input password
-    mov ah, 0Ah
-    lea dx, password
-    int 21h
+end_password:
+    mov byte ptr [edi], 0   ; Null terminate the string
+    call Crlf               ; New line after password entry
 
-    ; Simulate successful login (no real validation)
-    mov ah, 09h
-    lea dx, successMsg
-    int 21h
+    ; Check for null password
+    cmp ecx, 0
+    je password_empty
+
+    ; Continue with password hashing (unchanged)
+    mov esi, OFFSET password    
+    xor eax, eax               
+    mov ecx, SIZEOF password   
+hash_loop:
+    mov al, [esi]              
+    test al, al                
+    je hash_done              
+    xor ah, al                
+    inc esi                   
+    loop hash_loop
+hash_done:
+    mov [password], ah        
+
+    ; Clear registration data
+    mov edi, OFFSET username
+    mov ecx, SIZEOF username
+    xor eax, eax
+    rep stosb                 ; Clear username buffer
+
+    mov edi, OFFSET password
+    mov ecx, SIZEOF password
+    xor eax, eax
+    rep stosb                 ; Clear password buffer
+
+    ; Success Message
+    mov edx, OFFSET successMsg
+    call WriteString
+    call Crlf
+    call Crlf
+    
+    ; Display Welcome Message
+    mov edx, OFFSET welcomeMsg
+    call WriteString
+    mov edx, OFFSET username    ; Display the username
+    call WriteString
+    call Crlf                  ; New line after welcome message
+
     ret
-registration_login endp
 
-; --- Module 2: Destination & Date Selection ---
-dest_date_selection proc
-    ; Prompt for destination
-    mov ah, 09h
-    lea dx, destPrompt
-    int 21h
+username_empty:
+    mov edx, OFFSET loginMsg
+    call WriteString
+    jmp registration_login
 
-    ; Get single digit input (1-3)
-    mov ah, 01h
-    int 21h
-    sub al, '0'         ; Convert ASCII to number
+password_empty:
+    mov edx, OFFSET passMsg
+    call WriteString
+    jmp registration_login
+registration_login ENDP
+
+; --- Module 2: Destination ---
+dest_date_selection PROC
+    mov edx, OFFSET destPrompt
+    call WriteString
+    call ReadInt
+    ; Add validation here
+    cmp al, 1
+    jl invalid_dest    ; If less than 1
+    cmp al, 3
+    jg invalid_dest    ; If greater than 3
     mov destChoice, al
+    jmp valid_dest
 
-    ; Newline
-    mov ah, 09h
-    lea dx, newline
-    int 21h
+invalid_dest:
+    jmp dest_date_selection  ; Ask again for valid input
+valid_dest:
+    ; Continue with date input
 
-    ; Prompt for date
-    mov ah, 09h
-    lea dx, datePrompt
-    int 21h
+date_input:
+    mov edx, OFFSET datePrompt
+    call WriteString
+    mov edx, OFFSET dateInput
+    mov ecx, SIZEOF dateInput
+    call ReadString
 
-    ; Get date input (MMDD)
-    mov ah, 0Ah
-    lea dx, dateInput
-    int 21h
+    ; Validate length (should be 4 characters)
+    cmp eax, 4
+    jne invalid_date
 
-    ; Newline
-    mov ah, 09h
-    lea dx, newline
-    int 21h
-    ret
-dest_date_selection endp
-
-; --- Module 3: Service Type Selection ---
-service_type_selection proc
-    mov ah, 09h
-    lea dx, servicePrompt
-    int 21h
-
-    ; Get service type (1 or 2)
-    mov ah, 01h
-    int 21h
+    ; Convert and validate month (01-12)
+    mov esi, OFFSET dateInput
+    xor eax, eax
+    mov al, [esi]        ; First digit of month
     sub al, '0'
+    mov bl, 10
+    mul bl
+    mov bl, [esi+1]      ; Second digit of month
+    sub bl, '0'
+    add al, bl           ; AL now contains month number
+    
+    cmp al, 1
+    jl invalid_date
+    cmp al, 12
+    jg invalid_date
+
+    ; Convert and validate day (01-31)
+    xor eax, eax
+    mov al, [esi+2]      ; First digit of day
+    sub al, '0'
+    mov bl, 10
+    mul bl
+    mov bl, [esi+3]      ; Second digit of day
+    sub bl, '0'
+    add al, bl           ; AL now contains day number
+
+    cmp al, 1
+    jl invalid_date
+    cmp al, 31
+    jg invalid_date
+    
+    ; Display confirmation
+    mov edx, OFFSET confirmDateMsg
+    call WriteString
+    mov edx, OFFSET dateInput
+    call WriteString
+    call Crlf
+
+    ; Ask for confirmation
+confirm_date:
+    mov edx, OFFSET confirmPrompt
+    call WriteString
+    call ReadInt
+    cmp al, 1
+    je date_confirmed
+    cmp al, 0
+    je date_input      ; If not confirmed, ask for date again
+    jmp confirm_date   ; If invalid input, ask again
+
+invalid_date:
+    mov edx, OFFSET invalidDateMsg
+    call WriteString
+    jmp date_input
+
+date_confirmed:
+    ret
+dest_date_selection ENDP
+
+; --- Module 3: Service ---
+service_type_selection PROC
+    mov edx, OFFSET servicePrompt
+    call WriteString
+    call ReadInt
     mov serviceChoice, al
-
-    ; Newline
-    mov ah, 09h
-    lea dx, newline
-    int 21h
     ret
-service_type_selection endp
+service_type_selection ENDP
 
-; --- Module 4: Promo Application ---
-promo_application proc
-    mov ah, 09h
-    lea dx, promoPrompt
-    int 21h
-
-    ; Get promo choice (0-2)
-    mov ah, 01h
-    int 21h
-    sub al, '0'
+; --- Module 4: Promo ---
+promo_application PROC
+    mov edx, OFFSET promoPrompt
+    call WriteString
+    call ReadInt
     mov promoChoice, al
-
-    ; Newline
-    mov ah, 09h
-    lea dx, newline
-    int 21h
     ret
-promo_application endp
+promo_application ENDP
 
-; --- Module 5: Payment Processing ---
-payment_processing proc
-    ; Calculate base price based on service type
-    mov al, serviceChoice
+; --- Module 5: Payment & SST ---
+payment_processing PROC
+    ; Get base price
+    movzx eax, serviceChoice
     cmp al, 1
     je business_price
     mov ax, basePriceEconomy
@@ -182,119 +325,145 @@ business_price:
     mov ax, basePriceBusiness
 
 apply_promo:
-    ; Apply promo discount
-    mov bl, promoChoice
+    movzx ebx, promoChoice
     cmp bl, 1
     je elderly_discount
     cmp bl, 2
     je kid_discount
-    jmp show_payment
-
+    jmp save_final
 elderly_discount:
     sub ax, discountElderly
-    jmp show_payment
+    jmp save_final
 kid_discount:
     sub ax, discountKid
 
-show_payment:
+save_final:
+    mov baseFinal, ax
+
+    ; Display base amount
+    mov edx, OFFSET baseTotalMsg    ; Changed from inline string
+    call WriteString
+    movzx eax, baseFinal
+    call print_price
+    call Crlf
+
+    ; Calculate SST (6%)
+    movzx eax, baseFinal
+    xor edx, edx
+    mov ecx, 6
+    mul ecx
+    mov ecx, 100
+    div ecx              ; EAX = SST
+    mov sstAmount, ax
+
+    ; Display SST amount
+    mov edx, OFFSET sstMsg
+    call WriteString
+    movzx eax, sstAmount
+    call print_price
+    call Crlf
+
+    ; Total = baseFinal + SST
+    movzx eax, baseFinal
+    movzx ebx, sstAmount
+    add eax, ebx
     mov paymentAmount, ax
 
-    ; Prompt for payment (display only, assume paid)
-    mov ah, 09h
-    lea dx, paymentPrompt
-    int 21h
+    ; Display total amount
+    mov edx, OFFSET totalAmountMsg    ; Changed from inline string
+    call WriteString
+    movzx eax, paymentAmount
+    call print_price
+    call Crlf
+    call Crlf
 
-    ; Simple output of amount (in cents, no conversion to dollars here)
-    mov ax, paymentAmount
-    call print_number
-
-    ; Newline
-    mov ah, 09h
-    lea dx, newline
-    int 21h
+    ; Display payment prompt
+    mov edx, OFFSET paymentPrompt
+    call WriteString
+    call print_price
+    call Crlf
     ret
-payment_processing endp
+payment_processing ENDP
 
-; --- Module 6: Information Display ---
-info_display proc
-    ; Display receipt header
-    mov ah, 09h
-    lea dx, receiptMsg
-    int 21h
-    mov ah, 09h
-    lea dx, newline
-    int 21h
 
-    ; Display destination
-    mov ah, 09h
-    lea dx, destMsg
-    int 21h
-    movzx bx, destChoice
-    dec bx              ; Adjust for 0-based index
-    mov ax, 3           ; Each name is 3 bytes (e.g., 'NY$')
-    mul bx
-    lea dx, destNames
-    add dx, ax
-    mov ah, 09h
-    int 21h
-    mov ah, 09h
-    lea dx, newline
-    int 21h
+; --- Module 6: Display Receipt ---
+info_display PROC
+    mov edx, OFFSET receiptMsg
+    call WriteString
 
-    ; Display seat, depart, arrive (static for simplicity)
-    mov ah, 09h
-    lea dx, seatsMsg
-    int 21h
-    mov ah, 09h
-    lea dx, departMsg
-    int 21h
-    mov ah, 09h
-    lea dx, arriveMsg
-    int 21h
+    ; Destination
+    mov edx, OFFSET destMsg
+    call WriteString
+    movzx eax, destChoice
+    dec eax
+    mov ebx, TYPE destNames
+    mul ebx
+    add eax, OFFSET destNames
+    mov edx, eax
+    call WriteString
+    call Crlf
 
-    ; Display total paid
-    mov ah, 09h
-    lea dx, totalMsg
-    int 21h
-    mov ax, paymentAmount
-    call print_number
+    ; Seat, Depart, Arrive
+    mov edx, OFFSET seatsMsg
+    call WriteString
+    mov edx, OFFSET departMsg
+    call WriteString
+    mov edx, OFFSET arriveMsg
+    call WriteString
 
-    ; Newline
-    mov ah, 09h
-    lea dx, newline
-    int 21h
+    ; SST
+    mov edx, OFFSET sstMsg
+    call WriteString
+    movzx eax, sstAmount
+    call print_price
+    call Crlf
+
+    ; Total Paid
+    mov edx, OFFSET totalMsg
+    call WriteString
+    movzx eax, paymentAmount
+    call print_price
+    call Crlf
     ret
-info_display endp
+info_display ENDP
 
-; --- Utility: Print Number (AX) ---
-print_number proc
-    push ax
-    push bx
-    push cx
-    push dx
+; --- Utility: Print RM amount from cents (e.g., 1234 = RM12.34) ---
+print_price PROC
+    ; Input: EAX = amount in cents
+    push eax            ; Save original value
+    push ebx            ; Save registers we'll use
+    push edx
 
-    mov bx, 10
-    xor cx, cx          ; Counter for digits
-convert_loop:
-    xor dx, dx
-    div bx              ; AX = quotient, DX = remainder
-    add dl, '0'         ; Convert to ASCII
-    push dx             ; Save digit
-    inc cx
-    test ax, ax
-    jnz convert_loop
+    xor edx, edx
+    mov ebx, 100
+    div ebx             ; EAX = RM, EDX = cents
 
-print_loop:
-    pop dx
-    mov ah, 02h
-    int 21h
-    loop print_loop
+    ; Print the whole number part
+    call WriteDec
 
-    pop dx
-    pop cx
-    pop bx
-    pop ax
+    ; Print decimal point
+    push edx            ; Save cents
+    mov al, '.'         ; Use literal '.' character
+    call WriteChar
+    pop edx            ; Restore cents
+
+    ; Handle cents (add leading zero if needed)
+    mov eax, edx
+    cmp eax, 10
+    jae print_cents    ; If >= 10, print directly
+    
+    ; Add leading zero for single digit cents
+    push eax           ; Save cents
+    mov al, '0'
+    call WriteChar
+    pop eax           ; Restore cents
+
+print_cents:
+    call WriteDec      ; Print cents value
+
+    pop edx            ; Restore registers
+    pop ebx
+    pop eax
     ret
-print_number endp
-
-end main
+print_price ENDP
+END main
