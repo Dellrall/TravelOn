@@ -20,7 +20,7 @@ INCLUDE Irvine32.inc
 ;14) Ticket cancellation: For if user wish to cancel their tickets, they would be able to receive a refund
 ;15) More
 
-Add if still got time
+;Add if still got time
 ;1) Persistence data (if possible) 
 ;2) Ability to register user(if possible)
 ;3) Redesign the whole UI(if possible)
