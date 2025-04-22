@@ -9,7 +9,7 @@ INCLUDE Irvine32.inc
 ;3)ONHOLD Total seats price total calculation(all combine into the total)
 ;4)ONHOLD Information display module showing all the seats selected
 ;5)ONHOLD User ability to print tickets and print it out for each seats paid for
-;6) Continue the code after the first flow has been finished to allow administrator to go back to check tickets sold.
+;6)DONE Continue the code after the first flow has been finished to allow administrator to go back to check tickets sold.
 ;7) Add section which would require the user to enter their name for each of the selected for tickets details.
 ;8) Redesign the administrator dashboard(Include information like promo selected, premium user selection)
 ;9) Add some flair to the promo module
@@ -668,15 +668,16 @@ date_input:
     pop ebx                ; Restore month number
     dec ebx                ; Convert to 0-based index
     push ebx               ; Save for later use
-    movzx esi, bl
-    mov bl, [daysInMonth + esi]  ; Get max days for this month
+    movzx esi, bl         ; Clear upper bits of ESI
+    lea edi, daysInMonth  ; Get address of days array
+    movzx ebx, BYTE PTR [edi + esi]  ; Get max days for this month
     
     ; Validate day
     cmp al, 1
     jl invalid_day
     cmp al, bl
     jg invalid_day
-    
+
   ; Display the confirmation
     Call Crlf
     mov edx, OFFSET dateConfirmMsg
@@ -1049,7 +1050,7 @@ get_payment:
     call Crlf
 
 payment_input:
-    ; Get payment amount
+   ; Get payment amount
     mov edx, OFFSET paymentPrompt
     call WriteString
     call ReadInt       ; Read integer part (whole ringgit)
@@ -1059,12 +1060,11 @@ payment_input:
 
     ; Compare with required amount
     movzx ebx, paymentAmount
-    cmp eax, ebx
-    jl insufficient_payment
+    cmp eax, ebx      ; Compare input amount with required amount
+    jl insufficient_payment  ; Jump if input is less than required
 
     ; If we get here, payment is sufficient
-    ; Calculate change
-    sub eax, ebx      ; eax = input - required
+    sub eax, ebx      ; Calculate change
     mov changeAmount, eax
 
     ; Display change amount if any
