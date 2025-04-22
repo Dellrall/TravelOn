@@ -4,16 +4,16 @@ INCLUDE Irvine32.inc
 .stack 4096
 
 ;Whats left:
-;1) Multiple Seats selection
-;2) Seats selected element(if user have previously selected those seats, that seat will be taken)
-;3) Total seats price total calculation(all combine into the total)
-;4) Information display module showing all the seats selected
-;5) User ability to print tickets and print it out for each seats paid for
+;1)ONHOLD Multiple Seats selection
+;2)ONHOLD Seats selected element(if user have previously selected those seats, that seat will be taken)
+;3)ONHOLD Total seats price total calculation(all combine into the total)
+;4)ONHOLD Information display module showing all the seats selected
+;5)ONHOLD User ability to print tickets and print it out for each seats paid for
 ;6) Continue the code after the first flow has been finished to allow administrator to go back to check tickets sold.
 ;7) Add section which would require the user to enter their name for each of the selected for tickets details.
 ;8) Redesign the administrator dashboard(Include information like promo selected, premium user selection)
 ;9) Add some flair to the promo module
-;10) Fix the damn user login issue, and ties information and tickets data to each user
+;10) DONE Fix the damn user login issue, and ties information and tickets data to each user
 ;11) Duplication Prevention: Making sure that the seats selection module changes and store data for previous seats that have been selected
 ;12) Add festive/holidays prompt for specific date selected, make them to have the seats pre-selected.
 ;13) Feedback form: if user wanted to give back, there would a selection for it, user might get a random free gift or nothing at all.
@@ -40,21 +40,26 @@ WriteInt PROTO
 .data
       invalidChoiceMsg BYTE "Invalid choice. Please try again.", 0Dh, 0Ah, 0
     NUM_USERS = 5
-    valid_users BYTE "Roziyani", 0, (20-8) DUP(0)    ; Pad to 20 bytes
-                BYTE "Amos", 0, (20-4) DUP(0)         ; Pad to 20 bytes
-                BYTE "Dell", 0, (20-4) DUP(0)         ; Pad to 20 bytes
-                BYTE "Jason", 0, (20-5) DUP(0)        ; Pad to 20 bytes
-                BYTE "Luian", 0, (20-5) DUP(0)        ; Pad to 20 bytes
+    valid_users  BYTE "Roziyani", 0, (20-9) DUP(0)     ; 9 chars + null + 10 padding = 20
+            BYTE "Amos", 0, (20-5) DUP(0)          ; 4 chars + null + 15 padding = 20
+            BYTE "Dell", 0, (20-5) DUP(0)          ; 4 chars + null + 15 padding = 20
+            BYTE "Jason", 0, (20-6) DUP(0)         ; 5 chars + null + 14 padding = 20
+            BYTE "Luian", 0, (20-6) DUP(0)         ; 5 chars + null + 14 padding = 20
 
-    valid_passwords BYTE "Rz2023##", 0, (20-8) DUP(0)   ; Pad to 20 bytes
-                   BYTE "Am@s456", 0, (20-7) DUP(0)     ; Pad to 20 bytes
-                   BYTE "D3ll789", 0, (20-7) DUP(0)     ; Pad to 20 bytes
-                   BYTE "Js0n#2k", 0, (20-7) DUP(0)     ; Pad to 20 bytes
-                   BYTE "Lu!@n25", 0, (20-7) DUP(0)     ; Pad to 20 bytes
+valid_passwords  BYTE "Rz2023##", 0, (20-9) DUP(0)  ; 8 chars + null + 11 padding = 20
+                BYTE "Am@s456", 0, (20-8) DUP(0)    ; 7 chars + null + 12 padding = 20
+                BYTE "D3ll789", 0, (20-8) DUP(0)    ; 7 chars + null + 12 padding = 20
+                BYTE "Js0n#2k", 0, (20-8) DUP(0)    ; 7 chars + null + 12 padding = 20
+                BYTE "Lu!@n25", 0, (20-8) DUP(0)    ; 7 chars + null + 12 padding = 20
 
     invalidLoginMsg BYTE "Invalid username or password! Please try again.", 0Dh, 0Ah, 0
 
     ; --- Administrator Module ---
+; Add this structure for ticket history (add to .data section)
+MAX_TICKETS = 50  ; Maximum number of tickets per user
+ticketHistory     BYTE NUM_USERS DUP(MAX_TICKETS DUP(0))  ; Store seat info for each user
+userTicketCount   BYTE NUM_USERS DUP(0)                    ; Count of tickets per user
+currentUserIndex  DWORD 0                                  ; Store current user index
 adminLoginHeader BYTE "=== TravelOn Bus System Login ===", 0Dh, 0Ah, 0
 userTypePrompt    BYTE "Select User Type (1=User, 2=Administrator): ", 0
 adminPrompt       BYTE "Enter Secret Phrase: ", 0
@@ -70,7 +75,7 @@ businessCountMsg  BYTE "Business Class Tickets: ", 0
 economyCountMsg   BYTE "Economy Class Tickets: ", 0
 salesData         BYTE 0    ; Flag to track if any sales occurred
 totalSales        DWORD 0   ; Total sales amount in cents
-ticketCount       BYTE 0    ; Total number of tickets sold
+totalTicketCount  BYTE 0    ; Total number of tickets sold
 businessCount     BYTE 0    ; Number of business class tickets
 economyCount      BYTE 0    ; Number of economy class tickets
 adminOptionsMsg   BYTE "Options:", 0Dh, 0Ah
@@ -87,7 +92,7 @@ adminOptionsMsg   BYTE "Options:", 0Dh, 0Ah
     asterisk BYTE "*", 0      ; Asterisk character for masking
     MAX_PASSWORD_LENGTH = 20  ; Maximum password length
     welcomeMsg BYTE "Welcome to TravelOn Bus reservation system, ", 0
-
+  
     ; --- Destination & Date ---
     destPrompt BYTE "Enter Destination (1=Kuala Lumpur, 2=Kuantan, 3=Johor Bahru): ", 0
     departVenuePrompt BYTE "Enter Departure Venue (1=Kuala Lumpur, 2=Kuantan, 3=Johor Bahru): ", 0
@@ -195,12 +200,20 @@ cityNames    BYTE "Kuala Lumpur", 0, 7 DUP(0)     ; 20 bytes (13 + 7 padding)
             BYTE "Kuantan", 0, 12 DUP(0)          ; 20 bytes (8 + 12 padding)
             BYTE "Johor Bahru", 0, 9 DUP(0)       ; 20 bytes (11 + 9 padding)
 
+            logoutOptionsMsg   BYTE "Options:", 0Dh, 0Ah
+                  BYTE "1. Logout", 0Dh, 0Ah
+                  BYTE "2. Exit System", 0Dh, 0Ah
+                  BYTE "Select option (1-2): ", 0
+
 
 
 
 .code
 main PROC
+start:  
     call check_user_type 
+     cmp al, 2                  ; Check if admin login
+    je start                   ; If admin, go back to start after logout
 
     call registration_login
     call Crlf           ; Add space between modules
@@ -222,10 +235,8 @@ main PROC
     call Crlf
     call Crlf
 
-    call info_display
-    call Crlf
-
-    INVOKE ExitProcess, 0    ; Replace 'exit' with this
+     call info_display         ; This now includes logout options0
+    jmp start                 ; Return to start after logout
 main ENDP
 
 ; --- Administrator Module ---
@@ -271,58 +282,97 @@ admin_login:
     call Crlf
     call ReadChar         ; Wait for key press
     jmp check_user_type
-
 admin_dashboard:
     call Clrscr
     mov edx, OFFSET adminWelcomeMsg
     call WriteString
     call Crlf
     
-    ; Check if sales data exists
-    cmp salesData, 0
-    je no_sales_data
-    
-    ; Display sales report
+    ; Add sales summary first
     mov edx, OFFSET salesHeaderMsg
     call WriteString
-    
-    ; Total tickets sold
     mov edx, OFFSET ticketCountMsg
     call WriteString
-    movzx eax, ticketCount
+    movzx eax, totalTicketCount 
     call WriteDec
     call Crlf
     
-    ; Business class tickets
-    mov edx, OFFSET businessCountMsg
-    call WriteString
-    movzx eax, businessCount
-    call WriteDec
-    call Crlf
-    
-    ; Economy class tickets
-    mov edx, OFFSET economyCountMsg
-    call WriteString
-    movzx eax, economyCount
-    call WriteDec
-    call Crlf
-    call Crlf
-    
-    ; Total sales amount
-    mov edx, OFFSET totalSalesMsg
-    call WriteString
-    mov eax, totalSales
-    call print_price
-    call Crlf
-    call Crlf
+    ; Check if sales data exists
+    mov ecx, NUM_USERS          ; Number of users to check
+    xor esi, esi               ; User index counter
+    mov bl, 0                  ; Flag for any tickets found
 
+    ; Start checking tickets for each user
+
+check_user_tickets:
+    cmp userTicketCount[esi], 0 
+    je next_user
+    
+    ; Display user name
+    push ecx
+    push esi
+    
+    ; Calculate user name address
+    mov eax, esi
+    mov ebx, 20         ; Each username entry is 20 bytes
+    mul ebx
+    add eax, OFFSET valid_users
+    mov edx, eax
+    call WriteString
+    
+    ; Display user's tickets
+    mov al, ':'
+    call WriteChar
+    call Crlf
+    
+    ; Display each ticket
+    xor ecx, ecx
+    movzx ecx, userTicketCount[esi]
+    mov edi, MAX_TICKETS
+    mov eax, esi
+    mul edi
+    lea edi, ticketHistory[eax]
+    
+display_tickets:
+    push ecx
+    mov al, '['
+    call WriteChar
+    mov al, [edi]       ; Seat letter
+    call WriteChar
+    mov al, [edi + 1]   ; Seat number
+    call WriteChar
+    mov al, ']'
+    call WriteChar
+    mov al, ' '
+    call WriteChar
+    add edi, 2          ; Move to next ticket
+    pop ecx
+    loop display_tickets
+    
+    call Crlf
+    mov bl, 1           ; Set flag that tickets were found
+    
+    pop esi
+    pop ecx
+    
+next_user:
+    inc esi
+    loop check_user_tickets
+    
+    ; If no tickets found
+    test bl, bl
+    jnz show_admin_options
+    mov edx, OFFSET noSalesMsg
+    call WriteString
+    
 show_admin_options:
+    call Crlf
     mov edx, OFFSET adminOptionsMsg
     call WriteString
     call ReadInt
     
     cmp al, 1
-    je user_flow      ; Return to user mode
+    je check_user_type  ; Return to user type selection
     cmp al, 2
     je exit_system
     
@@ -441,6 +491,7 @@ check_user:
     call strcmp                ; Compare password
     je login_successful        ; If equal, login successful
 
+
 next_credential:
     pop edi                    ; Restore pointers from stack
     pop esi
@@ -471,6 +522,10 @@ login_successful:
     call WriteString
     mov edx, OFFSET username
     call WriteString
+ ; Store current user index
+    mov eax, NUM_USERS
+    sub eax, ecx        ; Calculate user index based on loop counter
+    mov currentUserIndex, eax
     call Crlf
     ret
 
@@ -1042,7 +1097,7 @@ payment_done:
     mov salesData, 1    ; Mark that we have sales data
     mov eax, inputAmount
     add totalSales, eax    ; Add to total sales
-    inc ticketCount        ; Increment total ticket count
+    inc totalTicketCount       ; Increment total ticket count
     
     ; Record ticket type
     movzx eax, serviceChoice
@@ -1253,8 +1308,52 @@ show_merchant:
     call Crlf
 
 receipt_done:
+ call Crlf
+    
+   ; Store ticket information for current user
+mov esi, currentUserIndex
+movzx eax, userTicketCount[esi]    ; Get current count
+mov edi, 2                     ; Each ticket takes 2 bytes
+mul edi                        ; EAX = count * 2
+mov edi, MAX_TICKETS
+push eax                       ; Save the offset
+mov eax, currentUserIndex
+mul edi                        ; EAX = userIndex * MAX_TICKETS
+lea edi, ticketHistory[eax]    ; Point to user's storage
+pop eax                        ; Restore the offset
+add edi, eax                   ; Point to next free slot
+
+    ; Store seat information
+    mov al, [selectedSeat]
+    mov [edi + ecx], al       ; Store seat letter
+    mov al, [selectedSeat + 1]
+    mov [edi + ecx + 1], al   ; Store seat number
+    inc BYTE PTR userTicketCount[esi] ; Increment ticket count for user
+
+show_logout_options:
+    mov edx, OFFSET logoutOptionsMsg
+    call WriteString
+    call ReadInt
+    
+    cmp al, 1
+    je do_logout
+    cmp al, 2
+    je do_exit
+    
+    ; Invalid choice
+    mov edx, OFFSET invalidChoiceMsg
+    call WriteString
+    jmp show_logout_options
+
+do_logout:
+    jmp check_user_type    ; Return to user type selection
+
+do_exit:
+    INVOKE ExitProcess, 0
+
     ret
 info_display ENDP
+
 
 ; --- Utility: Print RM amount from cents (e.g., 1234 = RM12.34) ---
 print_price PROC
