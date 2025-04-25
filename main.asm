@@ -57,7 +57,7 @@ valid_passwords  BYTE "Rz2023##", 0, (20-9) DUP(0)  ; 8 chars + null + 11 paddin
     ; --- Administrator Module ---
 ; Add this structure for ticket history (add to .data section)
 MAX_TICKETS = 50  ; Maximum number of tickets per user
-ticketHistory     BYTE NUM_USERS DUP(MAX_TICKETS DUP(0))  ; Store seat info for each user
+ticketHistory     BYTE NUM_USERS DUP(MAX_TICKETS DUP(3 DUP(0)))  ; Store seat letter, number, promo for each user ticket
 userTicketCount   BYTE NUM_USERS DUP(0)                    ; Count of tickets per user
 currentUserIndex  DWORD 0                                  ; Store current user index
 adminLoginHeader BYTE "=== TravelOn Bus System Login ===", 0Dh, 0Ah, 0
@@ -73,8 +73,15 @@ totalSalesMsg     BYTE "Total Sales: RM", 0
 ticketCountMsg    BYTE "Total Tickets Sold: ", 0
 businessCountMsg  BYTE "Business Class Tickets: ", 0
 economyCountMsg   BYTE "Economy Class Tickets: ", 0
+salesTargetMsg    BYTE "Sales Target: RM", 0
+remainingSalesMsg BYTE "Remaining to Target: RM", 0
+targetMetMsg      BYTE "Sales Target Met/Exceeded!", 0Dh, 0Ah, 0
+promoNoneMsg      BYTE " (Promo: None)", 0
+promoElderlyMsg   BYTE " (Promo: Elderly)", 0
+promoKidMsg       BYTE " (Promo: Kid)", 0
 salesData         BYTE 0    ; Flag to track if any sales occurred
 totalSales        DWORD 0   ; Total sales amount in cents
+salesTarget       DWORD 100000 ; Sales target in cents (RM 1000.00)
 totalTicketCount  BYTE 0    ; Total number of tickets sold
 businessCount     BYTE 0    ; Number of business class tickets
 economyCount      BYTE 0    ; Number of economy class tickets
@@ -82,6 +89,7 @@ adminOptionsMsg   BYTE "Options:", 0Dh, 0Ah
                  BYTE "1. Return to User Mode", 0Dh, 0Ah
                  BYTE "2. Exit System", 0Dh, 0Ah
                  BYTE "Select option (1-2): ", 0
+
 
    ; --- Registration & Login ---
     username BYTE 20 DUP(0)
@@ -291,31 +299,76 @@ admin_dashboard:
     mov edx, OFFSET adminWelcomeMsg
     call WriteString
     call Crlf
-    
-    ; Add sales summary first
+
+    ; Display Sales Summary
     mov edx, OFFSET salesHeaderMsg
     call WriteString
+
+    ; Display Total Sales
+    mov edx, OFFSET totalSalesMsg
+    call WriteString
+    mov eax, totalSales
+    call print_price ; Use print_price to format
+    call Crlf
+
+    ; Display Sales Target
+    mov edx, OFFSET salesTargetMsg
+    call WriteString
+    mov eax, salesTarget
+    call print_price
+    call Crlf
+
+    ; Calculate and Display Remaining Sales
+    mov eax, salesTarget
+    sub eax, totalSales
+    jc target_already_met ; Jump if totalSales > salesTarget (carry is set)
+
+    ; Target not met yet
+    mov edx, OFFSET remainingSalesMsg
+    call WriteString
+    call print_price ; EAX already contains remaining amount
+    call Crlf
+    jmp display_ticket_details
+
+target_already_met:
+    mov edx, OFFSET targetMetMsg
+    call WriteString
+
+display_ticket_details:
+    call Crlf
     mov edx, OFFSET ticketCountMsg
     call WriteString
-    movzx eax, totalTicketCount 
+    movzx eax, totalTicketCount
     call WriteDec
     call Crlf
-    
+
+    ; Display Business/Economy Counts
+    mov edx, OFFSET businessCountMsg
+    call WriteString
+    movzx eax, businessCount
+    call WriteDec
+    call Crlf
+    mov edx, OFFSET economyCountMsg
+    call WriteString
+    movzx eax, economyCount
+    call WriteDec
+    call Crlf
+    call Crlf
+
     ; Check if sales data exists
     mov ecx, NUM_USERS          ; Number of users to check
     xor esi, esi               ; User index counter
     mov bl, 0                  ; Flag for any tickets found
 
     ; Start checking tickets for each user
-
 check_user_tickets:
-    cmp userTicketCount[esi], 0 
+    cmp userTicketCount[esi], 0
     je next_user
-    
+
     ; Display user name
     push ecx
     push esi
-    
+
     ; Calculate user name address
     mov eax, esi
     mov ebx, 20         ; Each username entry is 20 bytes
@@ -323,20 +376,22 @@ check_user_tickets:
     add eax, OFFSET valid_users
     mov edx, eax
     call WriteString
-    
+
     ; Display user's tickets
     mov al, ':'
     call WriteChar
     call Crlf
-    
+
     ; Display each ticket
     xor ecx, ecx
     movzx ecx, userTicketCount[esi]
-    mov edi, MAX_TICKETS
+    mov edi, 3 ; Each ticket record is now 3 bytes
     mov eax, esi
     mul edi
+    mov ebx, MAX_TICKETS
+    mul ebx ; EAX = user_index * MAX_TICKETS * 3 (start offset in bytes)
     lea edi, ticketHistory[eax]
-    
+
 display_tickets:
     push ecx
     mov al, '['
@@ -347,28 +402,56 @@ display_tickets:
     call WriteChar
     mov al, ']'
     call WriteChar
-    mov al, ' '
+
+    ; Display Promo Type
+    mov al, [edi + 2]   ; Get promo choice byte
+    cmp al, 1
+    je show_elderly_promo
+    cmp al, 2
+    je show_kid_promo
+
+show_none_promo: ; Default case if 0 or other value
+    mov edx, OFFSET promoNoneMsg
+    call WriteString
+    jmp next_ticket_display
+
+show_elderly_promo:
+    mov edx, OFFSET promoElderlyMsg
+    call WriteString
+    jmp next_ticket_display
+
+show_kid_promo:
+    mov edx, OFFSET promoKidMsg
+    call WriteString
+
+next_ticket_display:
+    mov al, ' ' ; Add space after promo info
     call WriteChar
-    add edi, 2          ; Move to next ticket
+    add edi, 3          ; Move to next ticket (3 bytes)
     pop ecx
     loop display_tickets
-    
+
     call Crlf
     mov bl, 1           ; Set flag that tickets were found
-    
+
     pop esi
     pop ecx
-    
+
 next_user:
     inc esi
-    loop check_user_tickets
-    
+    dec ecx
+    jnz check_user_tickets_near
+    jmp after_check_user_loop
+check_user_tickets_near:
+    jmp check_user_tickets
+after_check_user_loop:
+
     ; If no tickets found
     test bl, bl
     jnz show_admin_options
     mov edx, OFFSET noSalesMsg
     call WriteString
-    
+
 show_admin_options:
     call Crlf
     mov edx, OFFSET adminOptionsMsg
@@ -583,7 +666,6 @@ strings_not_equal:
 strcmp ENDP
 
 ; --- Module 2: Destination ---
-; --- Module 2: Destination ---
 dest_date_selection PROC
     ; Get departure venue
 depart_input:
@@ -621,182 +703,159 @@ get_destination:
     cmp al, bl
     je same_venue_error
     
-    ; Store destination choice
     mov destChoice, al
-    jmp get_date
-
-invalid_dest:
-    mov edx, OFFSET invalidChoiceMsg
-    call WriteString
-    jmp get_destination
+    jmp valid_dest
 
 same_venue_error:
     mov edx, OFFSET invalidDepartMsg
     call WriteString
-    jmp get_destination
+    jmp depart_input    ; Go back to departure selection
 
-; Date input and validation
-get_date:
-    ; Clear any previous date input
-    mov edi, OFFSET dateInput
-    mov ecx, 5
-    mov al, 0
-    rep stosb
+invalid_dest:
+    mov edx, OFFSET invalidChoiceMsg
+    call WriteString
+    jmp get_destination  ; Ask again for valid destination
+
+valid_dest:
     
-    ; Reset EDI to start of dateInput
-    mov edi, OFFSET dateInput
-
-    ; Prompt for date
+date_input:
     mov edx, OFFSET datePrompt
     call WriteString
-    
-    ; Read date as string
     mov edx, OFFSET dateInput
-    mov ecx, 5          ; 4 digits + null terminator
+    mov ecx, SIZEOF dateInput
     call ReadString
-    
-    ; Validate date format (must be 4 digits)
+
+    ; Validate input length (should be 4 characters)
     cmp eax, 4
     jne invalid_date_format
-    
-    ; Extract month (first two digits)
-    mov edi, OFFSET dateInput
-    xor eax, eax
-    mov al, [edi]       ; First digit
+
+    ; Convert month (first two characters)
+    mov al, [dateInput]     ; First digit
     sub al, '0'
     mov bl, 10
     mul bl
-    mov bl, [edi+1]     ; Second digit
+    mov bl, [dateInput + 1] ; Second digit
     sub bl, '0'
-    add al, bl
+    add al, bl             ; AL now contains month number (1-12)
     
-    ; Validate month (1-12)
+    ; Validate month
     cmp al, 1
     jl invalid_month
     cmp al, 12
     jg invalid_month
     
-    ; Store month for later use
-    push eax            ; Save month value
+    push eax               ; Save month number
     
-    ; Extract day (last two digits)
-    xor eax, eax
-    mov al, [edi+2]     ; Third digit
+    ; Convert day (last two characters)
+    mov al, [dateInput + 2] ; Third digit
     sub al, '0'
     mov bl, 10
     mul bl
-    mov bl, [edi+3]     ; Fourth digit
+    mov bl, [dateInput + 3] ; Fourth digit
     sub bl, '0'
-    add al, bl
+    add al, bl             ; AL now contains day number
     
-    ; Get the month back
-    pop ebx             ; Restore month value
+    ; Get days in month
+    pop ebx                ; Restore month number
+    dec ebx                ; Convert to 0-based index
+    push ebx               ; Save for later use
+    movzx esi, bl         ; Clear upper bits of ESI
+    lea edi, daysInMonth  ; Get address of days array
+    movzx ebx, BYTE PTR [edi + esi]  ; Get max days for this month
     
-    ; Validate day based on month
-    dec ebx             ; Adjust for 0-based index
-    movzx ecx, daysInMonth[ebx]  ; Get days in this month
-    
-    ; Special case for February in leap year (2025 is not a leap year)
-    
-    ; Check if day is valid for this month
+    ; Validate day
     cmp al, 1
     jl invalid_day
-    cmp al, cl
+    cmp al, bl
     jg invalid_day
-    
-    ; Store day for later use
-    push eax            ; Save day value
-    
-    ; Display the selected date
+
+    ; Display the confirmation
+    Call Crlf
     mov edx, OFFSET dateConfirmMsg
     call WriteString
     
-    ; Get month name
-    mov eax, 0
-    mov al, bl          ; Month index (0-based)
+    ; Find and display month name
+    mov ebx, OFFSET monthNames
+    mov ecx, [esp]        ; Get month index from stack (0-based)
     
-    ; Calculate offset to month name
-    ; Each month name has variable length + null terminator
-    mov esi, OFFSET monthNames
-    mov ecx, 0          ; Counter for months
-    
-find_month_loop:
-    cmp ecx, eax
+find_month:
+    cmp ecx, 0
     je found_month
     
-    ; Skip to next month name
-    mov dl, 0           ; Look for null terminator
-find_null:
-    cmp [esi], dl
-    je found_null
-    inc esi
-    jmp find_null
-    
-found_null:
-    inc esi             ; Move past null terminator
-    inc ecx
-    jmp find_month_loop
+    ; Skip current month name
+find_next:
+    cmp BYTE PTR [ebx], 0
+    je skip_null
+    inc ebx
+    jmp find_next
+skip_null:
+    inc ebx        ; Skip the null terminator
+    dec ecx
+    jmp find_month
     
 found_month:
-    ; ESI now points to the month name
-    mov edx, esi
+    ; Display month name
+    mov edx, ebx
     call WriteString
     
-    ; Write space
+    ; Display space
     mov al, ' '
     call WriteChar
     
-    ; Write day with suffix
-    pop eax             ; Restore day value
-    push eax            ; Save it again
+    ; Display day with suffix
+    movzx eax, BYTE PTR [dateInput + 2]
+    sub al, '0'
+    mov bl, 10
+    mul bl
+    movzx ebx, BYTE PTR [dateInput + 3]
+    sub bl, '0'
+    add al, bl          ; AL now contains day number
+    
+    ; Display the day number
+    push eax            ; Save day number
     call WriteDec
     
-    ; Add appropriate suffix (st, nd, rd, th)
-    mov ebx, eax
+    ; Determine suffix
+    pop eax             ; Restore day number
+    push eax            ; Save it again
     
-    ; Special cases for 11, 12, 13
-    cmp ebx, 11
+    ; Special cases for 11th, 12th, 13th
+    cmp al, 11
     je use_th
-    cmp ebx, 12
+    cmp al, 12
     je use_th
-    cmp ebx, 13
+    cmp al, 13
     je use_th
     
-    ; Get last digit
-    mov edx, ebx
-    mov ebx, 10
-    mov eax, edx
-    xor edx, edx
-    div ebx             ; EDX now has remainder (last digit)
+    ; Get last digit for other numbers
+    mov bl, 10
+    div bl              ; AH contains last digit
+    mov al, ah
     
     ; Choose suffix based on last digit
-    cmp edx, 1
+    cmp al, 1
     je use_st
-    cmp edx, 2
+    cmp al, 2
     je use_nd
-    cmp edx, 3
+    cmp al, 3
     je use_rd
     jmp use_th
     
 use_st:
     mov edx, OFFSET dateSuffix
-    jmp write_suffix
-    
+    jmp show_suffix
 use_nd:
-    mov edx, OFFSET dateSuffix + 3  ; Skip "st" + null
-    jmp write_suffix
-    
+    mov edx, OFFSET dateSuffix + 3
+    jmp show_suffix
 use_rd:
-    mov edx, OFFSET dateSuffix + 6  ; Skip "st" + null + "nd" + null
-    jmp write_suffix
-    
+    mov edx, OFFSET dateSuffix + 6
+    jmp show_suffix
 use_th:
-    mov edx, OFFSET dateSuffix + 9  ; Skip "st" + null + "nd" + null + "rd" + null
-    
-write_suffix:
+    mov edx, OFFSET dateSuffix + 9
+show_suffix:
     call WriteString
     
-    ; Write year
+    ; Display year
     mov edx, OFFSET yearDisplay
     call WriteString
     call Crlf
@@ -806,35 +865,38 @@ write_suffix:
     call WriteString
     call ReadInt
     
-    ; Check confirmation
-    cmp al, 1
+    ; Store result temporarily
+    mov bl, al
+    pop eax             ; Clean up day number from stack
+    
+    ; Now check the confirmation
+    cmp bl, 1
     je date_confirmed
+    cmp bl, 0
+    je date_input
     
-    ; If not confirmed, ask for date again
-    jmp get_date
-    
-date_confirmed:
-    ; Restore day value
-    pop eax
-    
-    ; Return with valid date
-    ret
-    
-invalid_date_format:
-    mov edx, OFFSET invalidDateMsg
+    mov edx, OFFSET invalidChoiceMsg
     call WriteString
-    jmp get_date
-    
+    jmp date_input
+
 invalid_month:
     mov edx, OFFSET invalidMonthMsg
     call WriteString
-    jmp get_date
-    
+    jmp date_input
+
 invalid_day:
     mov edx, OFFSET invalidDayMsg
     call WriteString
-    jmp get_date
-    
+    jmp date_input
+
+invalid_date_format:
+    mov edx, OFFSET invalidDateMsg
+    call WriteString
+    jmp date_input
+
+date_confirmed:
+    pop ebx     ; Balance the stack by removing the saved month number
+    ret
 dest_date_selection ENDP
 
 
@@ -1133,11 +1195,12 @@ payment_exact:
     mov changeAmount, 0    ; Ensure change is zero
     call Crlf
 
+    ; totalSales now tracks the actual ticket prices rather than payments received
 payment_done:
     ; Record sales data
-    mov salesData, 1    ; Mark that we have sales data
-    mov eax, inputAmount
-    add totalSales, eax    ; Add to total sales
+    mov salesData, 1        ; Mark that we have sales data
+    movzx eax, paymentAmount ; Get the actual ticket price (includes SST)
+    add totalSales, eax     ; Add actual ticket price to total sales
     inc totalTicketCount       ; Increment total ticket count
     
     ; Record ticket type
@@ -1354,21 +1417,24 @@ receipt_done:
    ; Store ticket information for current user
 mov esi, currentUserIndex
 movzx eax, userTicketCount[esi]    ; Get current count
-mov edi, 2                     ; Each ticket takes 2 bytes
-mul edi                        ; EAX = count * 2
-mov edi, MAX_TICKETS
-push eax                       ; Save the offset
+mov edi, 3                     ; Each ticket takes 3 bytes (SeatLetter, SeatNum, Promo)
+mul edi                        ; EAX = count * 3 (byte offset within this user's block)
+mov edi, MAX_TICKETS * 3       ; Size of one user's ticket block in bytes
+push eax                       ; Save the offset within the block
 mov eax, currentUserIndex
-mul edi                        ; EAX = userIndex * MAX_TICKETS
-lea edi, ticketHistory[eax]    ; Point to user's storage
-pop eax                        ; Restore the offset
-add edi, eax                   ; Point to next free slot
+mul edi                        ; EAX = userIndex * (MAX_TICKETS * 3)
+lea edi, ticketHistory[eax]    ; Point to start of user's storage block
+pop eax                        ; Restore the offset within the block
+add edi, eax                   ; Point to next free slot (start of 3-byte record)
 
-    ; Store seat information
+    ; Store seat information and promo
     mov al, [selectedSeat]
-    mov [edi + ecx], al       ; Store seat letter
+    mov [edi], al       ; Store seat letter
     mov al, [selectedSeat + 1]
-    mov [edi + ecx + 1], al   ; Store seat number
+    mov [edi + 1], al   ; Store seat number
+    movzx eax, promoChoice ; Get promo choice (0, 1, or 2)
+    mov [edi + 2], al   ; Store promo choice
+
     inc BYTE PTR userTicketCount[esi] ; Increment ticket count for user
 
 show_logout_options:
