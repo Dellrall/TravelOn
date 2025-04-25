@@ -24,7 +24,7 @@ INCLUDE Irvine32.inc
 ;1) Persistence data (if possible) 
 ;2) Ability to register user(if possible)
 ;3) Redesign the whole UI(if possible)
-;4) More
+;4)�More
 
 ; Add external declarations for Irvine32 functions
 ExitProcess PROTO, dwExitCode:DWORD
@@ -138,18 +138,22 @@ serviceClassHeader BYTE "Welcome to TravelOn Bus Service Class Selection", 0Dh, 
 
      ; --- Seat Selection ---
     seatPrompt BYTE "Select your seat (e.g., A1) or enter 'B' to go back: ", 0
-    seatLayout BYTE "     Business Class", 0Dh, 0Ah
-              BYTE "   1  2     3  4", 0Dh, 0Ah
-              BYTE "A [ ][ ]   [ ][ ]", 0Dh, 0Ah
-              BYTE "B [ ][ ]   [ ][ ]", 0Dh, 0Ah
-              BYTE "     Economy Class", 0Dh, 0Ah
-              BYTE "C [ ][ ]   [ ][ ]", 0Dh, 0Ah
-              BYTE "D [ ][ ]   [ ][ ]", 0Dh, 0Ah
-              BYTE "E [ ][ ]   [ ][ ]", 0Dh, 0Ah, 0
+  ; --- Seat Selection ---
+seatLayout BYTE " Business Class", 0Dh, 0Ah
+          BYTE "   1  2     3  4", 0Dh, 0Ah
+          BYTE "A [ ][ ]   [ ][ ]", 0Dh, 0Ah
+          BYTE "B [ ][ ]   [ ][ ]", 0Dh, 0Ah
+          BYTE "  Economy Class", 0Dh, 0Ah
+          BYTE "C [ ][ ]   [ ][ ]", 0Dh, 0Ah
+          BYTE "D [ ][ ]   [ ][ ]", 0Dh, 0Ah
+          BYTE "E [ ][ ]   [ ][ ]", 0Dh, 0Ah, 0
               wrongClassMsg BYTE "This seat is not in your selected class!", 0Dh, 0Ah, 0
   
     selectedSeat BYTE 3 DUP(0) ; Store selected seat
     invalidSeatMsg BYTE "Invalid seat selection! Please try again.", 0Dh, 0Ah, 0
+    seatTakenMsg     BYTE "This seat is already taken for this date. Please select another seat.", 0Dh, 0Ah, 0
+seatBookings     BYTE MAX_TICKETS DUP(4 DUP(0))  ; Format: Month(1) Day(1) SeatRow(1) SeatNum(1)
+dynamicSeatLayout BYTE 255 DUP(0)  ; Buffer for dynamic seat layout
     
 
     ; --- Promo ---
@@ -839,42 +843,53 @@ service_input:
     jg invalid_service
     mov serviceChoice, al
 
-    ; Display appropriate seat layout
-    call Crlf
-    mov edx, OFFSET seatLayout
-    call WriteString
-    call Crlf
+  
   
 
 seat_selection:
+    ; Update and display the dynamic seat layout with taken seats
+    call update_seat_layout
+    mov edx, OFFSET dynamicSeatLayout
+    call WriteString
+    call Crlf
+
     mov edx, OFFSET seatPrompt
     call WriteString
     
     ; Read seat selection
     mov edx, OFFSET selectedSeat
-    mov ecx, 3          ; Max length (2 chars + null)
+    mov ecx, 3
     call ReadString
     
-      ; Check if user wants to go back (single 'B' character)
+    ; Check if user wants to go back
     mov al, [selectedSeat]
     cmp al, 'B'
     jne not_back_command
-    mov al, [selectedSeat + 1]  ; Check if there's a second character
-    test al, al                 ; If null terminator, it's a back command
-    je service_input            ; Loop back to service selection
-    
+    mov al, [selectedSeat + 1]
+    test al, al
+    je service_input
+
 not_back_command:
-    ; Continue with seat validation
-    
-    ; Validate seat format (e.g., A1, B2, etc.)
+    ; Validate seat format
     call validate_seat
-    jc invalid_seat     ; If carry flag set, invalid seat
-    
-    ; Check if seat matches selected service class
+    jc invalid_seat
+
+    ; Check if seat is available
+    call check_seat_availability
+    jc seat_taken
+
+    ; Check service class match
     call check_service_match
-    jc wrong_class      ; If carry flag set, wrong class
-    
-    ret                 ; Valid seat selected
+    jc wrong_class
+
+    ; Store booking if everything is valid
+    call store_booking
+    ret
+
+seat_taken:
+    mov edx, OFFSET seatTakenMsg
+    call WriteString
+    jmp seat_selection
 
 invalid_service:
     jmp service_input
@@ -1394,4 +1409,353 @@ print_cents:
     pop eax
     ret
 print_price ENDP
+
+check_seat_availability PROC
+    ; Input: selectedSeat contains seat selection
+    ;        dateInput contains selected date
+    ; Output: Carry flag set if seat is taken, clear if available
+    push eax
+    push ebx
+    push ecx
+    push edx
+    push esi
+    push edi
+
+    ; Convert date input to comparable format
+    movzx eax, BYTE PTR [dateInput]      ; First digit of month
+    sub al, '0'
+    mov bl, 10
+    mul bl
+    movzx ebx, BYTE PTR [dateInput + 1]  ; Second digit of month
+    sub bl, '0'
+    add al, bl                           ; AL now contains month number
+    mov dl, al                           ; Save month in DL
+
+    movzx eax, BYTE PTR [dateInput + 2]  ; First digit of day
+    sub al, '0'
+    mov bl, 10
+    mul bl
+    movzx ebx, BYTE PTR [dateInput + 3]  ; Second digit of day
+    sub bl, '0'
+    add al, bl                           ; AL now contains day number
+    mov dh, al                           ; Save day in DH
+
+    ; Check against existing bookings
+    mov esi, OFFSET seatBookings
+    mov ecx, MAX_TICKETS
+
+check_booking_loop:
+    ; If entry is empty (month = 0), skip it
+    cmp BYTE PTR [esi], 0
+    je next_booking
+    
+    ; Compare month
+    cmp [esi], dl
+    jne next_booking
+    
+    ; Compare day
+    cmp [esi + 1], dh
+    jne next_booking
+    
+    ; Compare seat row
+    mov al, [selectedSeat]
+    cmp [esi + 2], al
+    jne next_booking
+    
+    ; Compare seat number
+    mov al, [selectedSeat + 1]
+    cmp [esi + 3], al
+    je seat_is_taken
+
+next_booking:
+    add esi, 4        ; Move to next booking entry
+    loop check_booking_loop
+    
+    ; Seat is available
+    clc               ; Clear carry flag
+    jmp check_done
+
+seat_is_taken:
+    stc               ; Set carry flag
+
+check_done:
+    pop edi
+    pop esi
+    pop edx
+    pop ecx
+    pop ebx
+    pop eax
+    ret
+check_seat_availability ENDP
+
+update_seat_layout PROC
+    ; Creates a dynamic seat layout showing taken seats
+    push eax
+    push ebx
+    push ecx
+    push edx
+    push esi
+    push edi
+
+    ; First, copy the original layout to dynamic layout
+    mov esi, OFFSET seatLayout
+    mov edi, OFFSET dynamicSeatLayout
+    mov ecx, 255
+    rep movsb
+
+    ; Get current date in comparable format
+    movzx eax, BYTE PTR [dateInput]      ; Month first digit
+    sub al, '0'
+    mov bl, 10
+    mul bl
+    movzx ebx, BYTE PTR [dateInput + 1]  ; Month second digit
+    sub bl, '0'
+    add al, bl                           ; AL = month
+    mov dl, al                           ; Store month in DL
+
+    movzx eax, BYTE PTR [dateInput + 2]  ; Day first digit
+    sub al, '0'
+    mov bl, 10
+    mul bl
+    movzx ebx, BYTE PTR [dateInput + 3]  ; Day second digit
+    sub bl, '0'
+    add al, bl                           ; AL = day
+    mov dh, al                           ; Store day in DH
+
+    ; Now mark taken seats by scanning the seatBookings array
+    mov esi, OFFSET seatBookings
+    mov ecx, MAX_TICKETS
+
+update_layout_loop:
+    ; Check if this is a valid booking (month != 0)
+    cmp BYTE PTR [esi], 0
+    je next_seat_update
+
+    ; Compare current date with booking date
+    mov al, [esi]      ; Booking month
+    cmp al, dl         ; Compare with our month
+    jne next_seat_update
+
+    mov al, [esi + 1]  ; Booking day
+    cmp al, dh         ; Compare with our day
+    jne next_seat_update
+
+    ; If we get here, this booking is for the current date
+    ; Now locate the corresponding seat in the dynamicSeatLayout
+    mov al, [esi + 2]  ; Get row letter (A-E)
+    mov bl, [esi + 3]  ; Get seat number (1-4)
+
+    ; Find the correct location in dynamicSeatLayout
+    ; First, calculate the start of the correct row in the layout
+    mov edi, OFFSET dynamicSeatLayout
+
+    ; Row A starts at line 3, which is after the header lines
+    ; Row B starts at line 4, etc.
+    ; Each row has CRLF at the end, so offset is 2 bytes per line
+    cmp al, 'A'
+    je row_A
+    cmp al, 'B'
+    je row_B
+    cmp al, 'C'
+    je row_C
+    cmp al, 'D'
+    je row_D
+    cmp al, 'E'
+    je row_E
+    jmp next_seat_update ; Invalid row
+
+row_A:
+    add edi, 52  ; Offset to beginning of "A [ ][ ]   [ ][ ]"
+    jmp find_column
+row_B:
+    add edi, 68  ; Offset to beginning of "B [ ][ ]   [ ][ ]"
+    jmp find_column
+row_C:
+    add edi, 102  ; Offset to beginning of "C [ ][ ]   [ ][ ]"
+    jmp find_column
+row_D:
+    add edi, 118  ; Offset to beginning of "D [ ][ ]   [ ][ ]"
+    jmp find_column
+row_E:
+    add edi, 134  ; Offset to beginning of "E [ ][ ]   [ ][ ]"
+
+find_column:
+    ; Now find the correct column (seat position)
+    cmp bl, '1'
+    je seat_1
+    cmp bl, '2'
+    je seat_2
+    cmp bl, '3'
+    je seat_3
+    cmp bl, '4'
+    je seat_4
+    jmp next_seat_update ; Invalid seat number
+
+seat_1:
+    add edi, 3  ; Position at "[ ]" - first seat
+    jmp mark_x
+seat_2:
+    add edi, 6  ; Position at "[ ]" - second seat
+    jmp mark_x
+seat_3:
+    add edi, 12  ; Position at "[ ]" - third seat (after gap)
+    jmp mark_x
+seat_4:
+    add edi, 15  ; Position at "[ ]" - fourth seat
+
+mark_x:
+    ; Now we're positioned at the first bracket of the seat
+    ; We need to replace the space between brackets with X
+    inc edi  ; Move to the space character between [ and ]
+    mov BYTE PTR [edi], 'X'  ; Replace space with X
+
+next_seat_update:
+    add esi, 4  ; Move to next booking entry
+    loop update_layout_loop
+
+    pop edi
+    pop esi
+    pop edx
+    pop ecx
+    pop ebx
+    pop eax
+    ret
+update_seat_layout ENDP
+
+mark_seat_taken PROC
+    ; Input: ESI points to booking entry (month, day, row, number)
+    push eax
+    push ebx
+    push ecx
+    push edx
+    push esi
+    push edi
+
+    ; Find the correct location in dynamicSeatLayout
+    mov al, [esi + 2]     ; Get row letter (A-E)
+    mov bl, [esi + 3]     ; Get seat number (1-4)
+
+    ; Calculate position in layout
+    mov edi, OFFSET dynamicSeatLayout
+
+    ; Determine row offset
+    cmp al, 'A'
+    je row_A_pos
+    cmp al, 'B'
+    je row_B_pos
+    cmp al, 'C'
+    je row_C_pos
+    cmp al, 'D'
+    je row_D_pos
+    cmp al, 'E'
+    je row_E_pos
+    jmp mark_done         ; Invalid row
+
+row_A_pos:
+    add edi, 52           ; Position at start of row A
+    jmp find_seat_pos
+row_B_pos:
+    add edi, 68           ; Position at start of row B
+    jmp find_seat_pos
+row_C_pos:
+    add edi, 102          ; Position at start of row C
+    jmp find_seat_pos
+row_D_pos:
+    add edi, 118          ; Position at start of row D
+    jmp find_seat_pos
+row_E_pos:
+    add edi, 134          ; Position at start of row E
+
+find_seat_pos:
+    ; Find seat column
+    cmp bl, '1'
+    je col_1_pos
+    cmp bl, '2'
+    je col_2_pos
+    cmp bl, '3'
+    je col_3_pos
+    cmp bl, '4'
+    je col_4_pos
+    jmp mark_done         ; Invalid column
+
+col_1_pos:
+    add edi, 3            ; Position at the first "[ ]"
+    jmp place_x
+col_2_pos:
+    add edi, 6            ; Position at the second "[ ]"
+    jmp place_x
+col_3_pos:
+    add edi, 12           ; Position at the third "[ ]" (after gap)
+    jmp place_x
+col_4_pos:
+    add edi, 15           ; Position at the fourth "[ ]"
+
+place_x:
+    ; Now we're at the first bracket of the seat
+    inc edi               ; Move to space between brackets
+    mov BYTE PTR [edi], 'X'  ; Replace with X
+
+mark_done:
+    pop edi
+    pop esi
+    pop edx
+    pop ecx
+    pop ebx
+    pop eax
+    ret
+mark_seat_taken ENDP
+
+store_booking PROC
+    push eax
+    push ebx
+    push ecx
+    push edx
+    push esi
+
+    ; Find next free booking slot
+    mov esi, OFFSET seatBookings
+    mov ecx, MAX_TICKETS
+
+find_slot:
+    cmp BYTE PTR [esi], 0
+    je slot_found
+    add esi, 4
+    loop find_slot
+    jmp store_done     ; No free slots (shouldn't happen with MAX_TICKETS check)
+
+slot_found:
+    ; Store month
+    mov al, [dateInput]
+    sub al, '0'
+    mov bl, 10
+    mul bl
+    mov bl, [dateInput + 1]
+    sub bl, '0'
+    add al, bl
+    mov [esi], al
+
+    ; Store day
+    mov al, [dateInput + 2]
+    sub al, '0'
+    mov bl, 10
+    mul bl
+    mov bl, [dateInput + 3]
+    sub bl, '0'
+    add al, bl
+    mov [esi + 1], al
+
+    ; Store seat row and number
+    mov al, [selectedSeat]
+    mov [esi + 2], al
+    mov al, [selectedSeat + 1]
+    mov [esi + 3], al
+
+store_done:
+    pop esi
+    pop edx
+    pop ecx
+    pop ebx
+    pop eax
+    ret
+store_booking ENDP
 END main
