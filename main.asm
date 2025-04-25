@@ -3,6 +3,28 @@ INCLUDE Irvine32.inc
 .model flat,stdcall
 .stack 4096
 
+;Whats left:
+;1)ONHOLD Multiple Seats selection
+;2)ONHOLD Seats selected element(if user have previously selected those seats, that seat will be taken)
+;3)ONHOLD Total seats price total calculation(all combine into the total)
+;4)ONHOLD Information display module showing all the seats selected
+;5)ONHOLD User ability to print tickets and print it out for each seats paid for
+;6)DONE Continue the code after the first flow has been finished to allow administrator to go back to check tickets sold.
+;7) Add section which would require the user to enter their name for each of the selected for tickets details.
+;8) Redesign the administrator dashboard(Include information like promo selected, premium user selection)
+;9) Add some flair to the promo module
+;10) DONE Fix the damn user login issue, and ties information and tickets data to each user
+;11) Duplication Prevention: Making sure that the seats selection module changes and store data for previous seats that have been selected
+;12) Add festive/holidays prompt for specific date selected, make them to have the seats pre-selected.
+;13) Feedback form: if user wanted to give back, there would a selection for it, user might get a random free gift or nothing at all.
+;14) Ticket cancellation: For if user wish to cancel their tickets, they would be able to receive a refund
+;15) More
+
+;Add if still got time
+;1) Persistence data (if possible) 
+;2) Ability to register user(if possible)
+;3) Redesign the whole UI(if possible)
+;4)�More
 
 ; Add external declarations for Irvine32 functions
 ExitProcess PROTO, dwExitCode:DWORD
@@ -16,20 +38,51 @@ Crlf PROTO
 WriteInt PROTO
 
 .data
+      invalidChoiceMsg BYTE "Invalid choice. Please try again.", 0Dh, 0Ah, 0
     NUM_USERS = 5
-    valid_users BYTE "Roziyani", 0, (20-8) DUP(0)    ; Pad to 20 bytes
-                BYTE "Amos", 0, (20-4) DUP(0)         ; Pad to 20 bytes
-                BYTE "Dell", 0, (20-4) DUP(0)         ; Pad to 20 bytes
-                BYTE "Jason", 0, (20-5) DUP(0)        ; Pad to 20 bytes
-                BYTE "Luian", 0, (20-5) DUP(0)        ; Pad to 20 bytes
+    valid_users  BYTE "Roziyani", 0, (20-9) DUP(0)     ; 9 chars + null + 10 padding = 20
+            BYTE "Amos", 0, (20-5) DUP(0)          ; 4 chars + null + 15 padding = 20
+            BYTE "Dell", 0, (20-5) DUP(0)          ; 4 chars + null + 15 padding = 20
+            BYTE "Jason", 0, (20-6) DUP(0)         ; 5 chars + null + 14 padding = 20
+            BYTE "Luian", 0, (20-6) DUP(0)         ; 5 chars + null + 14 padding = 20
 
-    valid_passwords BYTE "Rz2023##", 0, (20-8) DUP(0)   ; Pad to 20 bytes
-                   BYTE "Am@s456", 0, (20-7) DUP(0)     ; Pad to 20 bytes
-                   BYTE "D3ll789", 0, (20-7) DUP(0)     ; Pad to 20 bytes
-                   BYTE "Js0n#2k", 0, (20-7) DUP(0)     ; Pad to 20 bytes
-                   BYTE "Lu!@n25", 0, (20-7) DUP(0)     ; Pad to 20 bytes
+valid_passwords  BYTE "Rz2023##", 0, (20-9) DUP(0)  ; 8 chars + null + 11 padding = 20
+                BYTE "Am@s456", 0, (20-8) DUP(0)    ; 7 chars + null + 12 padding = 20
+                BYTE "D3ll789", 0, (20-8) DUP(0)    ; 7 chars + null + 12 padding = 20
+                BYTE "Js0n#2k", 0, (20-8) DUP(0)    ; 7 chars + null + 12 padding = 20
+                BYTE "Lu!@n25", 0, (20-8) DUP(0)    ; 7 chars + null + 12 padding = 20
 
     invalidLoginMsg BYTE "Invalid username or password! Please try again.", 0Dh, 0Ah, 0
+
+    ; --- Administrator Module ---
+; Add this structure for ticket history (add to .data section)
+MAX_TICKETS = 50  ; Maximum number of tickets per user
+ticketHistory     BYTE NUM_USERS DUP(MAX_TICKETS DUP(0))  ; Store seat info for each user
+userTicketCount   BYTE NUM_USERS DUP(0)                    ; Count of tickets per user
+currentUserIndex  DWORD 0                                  ; Store current user index
+adminLoginHeader BYTE "=== TravelOn Bus System Login ===", 0Dh, 0Ah, 0
+userTypePrompt    BYTE "Select User Type (1=User, 2=Administrator): ", 0
+adminPrompt       BYTE "Enter Secret Phrase: ", 0
+secretPhrase      BYTE "Chicken Jockey", 0
+wrongPhraseMsg    BYTE "Invalid Secret Phrase. Access Denied.", 0Dh, 0Ah, 0
+adminWelcomeMsg   BYTE "=== Administrator Dashboard ===", 0Dh, 0Ah, 0
+noSalesMsg        BYTE "No ticket sales data available.", 0Dh, 0Ah, 0
+salesHeaderMsg    BYTE "Ticket Sales Report", 0Dh, 0Ah
+                  BYTE "==================", 0Dh, 0Ah, 0
+totalSalesMsg     BYTE "Total Sales: RM", 0
+ticketCountMsg    BYTE "Total Tickets Sold: ", 0
+businessCountMsg  BYTE "Business Class Tickets: ", 0
+economyCountMsg   BYTE "Economy Class Tickets: ", 0
+salesData         BYTE 0    ; Flag to track if any sales occurred
+totalSales        DWORD 0   ; Total sales amount in cents
+totalTicketCount  BYTE 0    ; Total number of tickets sold
+businessCount     BYTE 0    ; Number of business class tickets
+economyCount      BYTE 0    ; Number of economy class tickets
+adminOptionsMsg   BYTE "Options:", 0Dh, 0Ah
+                 BYTE "1. Return to User Mode", 0Dh, 0Ah
+                 BYTE "2. Exit System", 0Dh, 0Ah
+                 BYTE "Select option (1-2): ", 0
+
    ; --- Registration & Login ---
     username BYTE 20 DUP(0)
     password BYTE 20 DUP(0)
@@ -39,7 +92,7 @@ WriteInt PROTO
     asterisk BYTE "*", 0      ; Asterisk character for masking
     MAX_PASSWORD_LENGTH = 20  ; Maximum password length
     welcomeMsg BYTE "Welcome to TravelOn Bus reservation system, ", 0
-
+  
     ; --- Destination & Date ---
     destPrompt BYTE "Enter Destination (1=Kuala Lumpur, 2=Kuantan, 3=Johor Bahru): ", 0
     departVenuePrompt BYTE "Enter Departure Venue (1=Kuala Lumpur, 2=Kuantan, 3=Johor Bahru): ", 0
@@ -48,14 +101,19 @@ WriteInt PROTO
     datePrompt BYTE "Enter Date (MMDD): ", 0
     destChoice BYTE 0
     dateInput BYTE 5 DUP(0)
-    destNames BYTE "KL", 0, "KT", 0, "JB", 0
     invalidDateMsg BYTE "Invalid date format. Please enter MMDD format (e.g., 0411)", 0Dh, 0Ah, 0
     confirmDateMsg BYTE "Selected date is: ", 0
-    daysOfWeek    BYTE "Sunday", 0, "Monday", 0, "Tuesday", 0, "Wednesday", 0
-              BYTE "Thursday", 0, "Friday", 0, "Saturday", 0
-    dayMsg        BYTE " (", 0
-    dayMsgEnd     BYTE ")", 0Dh, 0Ah, 0
+    dayMsgEnd     BYTE 0Dh, 0Ah, 0
     confirmPrompt BYTE "Proceed with this date? (1=Yes, 0=No): ", 0
+    daysInMonth    BYTE 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31  ; Days in each month for 2025
+monthNames     BYTE "January", 0, "February", 0, "March", 0, "April", 0
+              BYTE "May", 0, "June", 0, "July", 0, "August", 0
+              BYTE "September", 0, "October", 0, "November", 0, "December", 0
+invalidMonthMsg BYTE "Invalid month. Please enter a month between 01-12.", 0Dh, 0Ah, 0
+invalidDayMsg   BYTE "Invalid day for the selected month.", 0Dh, 0Ah, 0
+dateConfirmMsg  BYTE "You have selected: ", 0
+dateSuffix   BYTE "st", 0, "nd", 0, "rd", 0, "th", 0  ; Suffixes for dates
+yearDisplay  BYTE ", 2025", 0                          ; Current year
 
     ; --- Service Type ---
     servicePrompt BYTE "Service Type (1=Business, 2=Economy): ", 0
@@ -80,20 +138,23 @@ serviceClassHeader BYTE "Welcome to TravelOn Bus Service Class Selection", 0Dh, 
 
      ; --- Seat Selection ---
     seatPrompt BYTE "Select your seat (e.g., A1) or enter 'B' to go back: ", 0
-    seatLayout BYTE "     Business Class", 0Dh, 0Ah
-              BYTE "   1  2     3  4", 0Dh, 0Ah
-              BYTE "A [ ][ ]   [ ][ ]", 0Dh, 0Ah
-              BYTE "B [ ][ ]   [ ][ ]", 0Dh, 0Ah
-              BYTE "     Economy Class", 0Dh, 0Ah
-              BYTE "C [ ][ ]   [ ][ ]", 0Dh, 0Ah
-              BYTE "D [ ][ ]   [ ][ ]", 0Dh, 0Ah
-              BYTE "E [ ][ ]   [ ][ ]", 0Dh, 0Ah, 0
+  ; --- Seat Selection ---
+seatLayout BYTE " Business Class", 0Dh, 0Ah
+          BYTE "   1  2     3  4", 0Dh, 0Ah
+          BYTE "A [ ][ ]   [ ][ ]", 0Dh, 0Ah
+          BYTE "B [ ][ ]   [ ][ ]", 0Dh, 0Ah
+          BYTE "  Economy Class", 0Dh, 0Ah
+          BYTE "C [ ][ ]   [ ][ ]", 0Dh, 0Ah
+          BYTE "D [ ][ ]   [ ][ ]", 0Dh, 0Ah
+          BYTE "E [ ][ ]   [ ][ ]", 0Dh, 0Ah, 0
               wrongClassMsg BYTE "This seat is not in your selected class!", 0Dh, 0Ah, 0
-    businessSeats BYTE "AB"    ; Rows for business class
-    economySeats  BYTE "CDE"   ; Rows for economy class
+  
     selectedSeat BYTE 3 DUP(0) ; Store selected seat
     invalidSeatMsg BYTE "Invalid seat selection! Please try again.", 0Dh, 0Ah, 0
-    seatTakenMsg BYTE "This seat is already taken! Please select another.", 0Dh, 0Ah, 0
+    seatTakenMsg     BYTE "This seat is already taken for this date. Please select another seat.", 0Dh, 0Ah, 0
+seatBookings     BYTE MAX_TICKETS DUP(4 DUP(0))  ; Format: Month(1) Day(1) SeatRow(1) SeatNum(1)
+dynamicSeatLayout BYTE 255 DUP(0)  ; Buffer for dynamic seat layout
+    
 
     ; --- Promo ---
     promoPrompt BYTE "Apply Promo? (1=Elderly, 2=Kid, 0=None): ", 0
@@ -128,6 +189,7 @@ serviceClassHeader BYTE "Welcome to TravelOn Bus Service Class Selection", 0Dh, 
     changeAmount DWORD 0
 
     ; --- Display Messages ---
+    dateDisplayMsg BYTE "Date: ", 0
     paymentPrompt BYTE "Enter Payment Amount: RM", 0
     receiptMsg BYTE "----- Receipt -----", 0Dh, 0Ah, 0
     destMsg    BYTE "Destination: ", 0
@@ -137,15 +199,26 @@ serviceClassHeader BYTE "Welcome to TravelOn Bus Service Class Selection", 0Dh, 
     arriveMsg  BYTE "Arrive: 12:00", 0Dh, 0Ah, 0
     sstMsg     BYTE "SST (6%): RM", 0
     totalMsg   BYTE "Total Paid: RM", 0
-    newline    BYTE 0Dh, 0Ah, 0
+  
 cityNames    BYTE "Kuala Lumpur", 0, 7 DUP(0)     ; 20 bytes (13 + 7 padding)
             BYTE "Kuantan", 0, 12 DUP(0)          ; 20 bytes (8 + 12 padding)
             BYTE "Johor Bahru", 0, 9 DUP(0)       ; 20 bytes (11 + 9 padding)
+
+            logoutOptionsMsg   BYTE "Options:", 0Dh, 0Ah
+                  BYTE "1. Logout", 0Dh, 0Ah
+                  BYTE "2. Exit System", 0Dh, 0Ah
+                  BYTE "Select option (1-2): ", 0
+
 
 
 
 .code
 main PROC
+start:  
+    call check_user_type 
+     cmp al, 2                  ; Check if admin login
+    je start                   ; If admin, go back to start after logout
+
     call registration_login
     call Crlf           ; Add space between modules
     call Crlf           ; Double space for better visibility
@@ -166,11 +239,163 @@ main PROC
     call Crlf
     call Crlf
 
-    call info_display
-    call Crlf
-
-    INVOKE ExitProcess, 0    ; Replace 'exit' with this
+     call info_display         ; This now includes logout options0
+    jmp start                 ; Return to start after logout
 main ENDP
+
+; --- Administrator Module ---
+check_user_type PROC
+    call Clrscr
+    mov edx, OFFSET adminLoginHeader
+    call WriteString
+    call Crlf
+    
+    mov edx, OFFSET userTypePrompt
+    call WriteString
+    call ReadInt
+    
+    cmp al, 2
+    je admin_login
+    cmp al, 1
+    je user_flow
+    
+    ; Invalid choice, ask again
+    mov edx, OFFSET invalidChoiceMsg
+    call WriteString
+    jmp check_user_type
+
+admin_login:
+    call Clrscr
+    mov edx, OFFSET adminPrompt
+    call WriteString
+    
+    ; Read secret phrase
+    mov edx, OFFSET username    ; Reuse username buffer for phrase
+    mov ecx, SIZEOF username
+    call ReadString
+    
+    ; Compare with secret phrase
+    mov edx, OFFSET username
+    mov esi, OFFSET secretPhrase
+    call strcmp
+    jnc admin_dashboard    ; If match (carry clear), show dashboard
+    
+    ; Wrong phrase
+    mov edx, OFFSET wrongPhraseMsg
+    call WriteString
+    call Crlf
+    call ReadChar         ; Wait for key press
+    jmp check_user_type
+admin_dashboard:
+    call Clrscr
+    mov edx, OFFSET adminWelcomeMsg
+    call WriteString
+    call Crlf
+    
+    ; Add sales summary first
+    mov edx, OFFSET salesHeaderMsg
+    call WriteString
+    mov edx, OFFSET ticketCountMsg
+    call WriteString
+    movzx eax, totalTicketCount 
+    call WriteDec
+    call Crlf
+    
+    ; Check if sales data exists
+    mov ecx, NUM_USERS          ; Number of users to check
+    xor esi, esi               ; User index counter
+    mov bl, 0                  ; Flag for any tickets found
+
+    ; Start checking tickets for each user
+
+check_user_tickets:
+    cmp userTicketCount[esi], 0 
+    je next_user
+    
+    ; Display user name
+    push ecx
+    push esi
+    
+    ; Calculate user name address
+    mov eax, esi
+    mov ebx, 20         ; Each username entry is 20 bytes
+    mul ebx
+    add eax, OFFSET valid_users
+    mov edx, eax
+    call WriteString
+    
+    ; Display user's tickets
+    mov al, ':'
+    call WriteChar
+    call Crlf
+    
+    ; Display each ticket
+    xor ecx, ecx
+    movzx ecx, userTicketCount[esi]
+    mov edi, MAX_TICKETS
+    mov eax, esi
+    mul edi
+    lea edi, ticketHistory[eax]
+    
+display_tickets:
+    push ecx
+    mov al, '['
+    call WriteChar
+    mov al, [edi]       ; Seat letter
+    call WriteChar
+    mov al, [edi + 1]   ; Seat number
+    call WriteChar
+    mov al, ']'
+    call WriteChar
+    mov al, ' '
+    call WriteChar
+    add edi, 2          ; Move to next ticket
+    pop ecx
+    loop display_tickets
+    
+    call Crlf
+    mov bl, 1           ; Set flag that tickets were found
+    
+    pop esi
+    pop ecx
+    
+next_user:
+    inc esi
+    loop check_user_tickets
+    
+    ; If no tickets found
+    test bl, bl
+    jnz show_admin_options
+    mov edx, OFFSET noSalesMsg
+    call WriteString
+    
+show_admin_options:
+    call Crlf
+    mov edx, OFFSET adminOptionsMsg
+    call WriteString
+    call ReadInt
+    
+    cmp al, 1
+    je check_user_type  ; Return to user type selection
+    cmp al, 2
+    je exit_system
+    
+    mov edx, OFFSET invalidChoiceMsg
+    call WriteString
+    jmp show_admin_options
+
+no_sales_data:
+    mov edx, OFFSET noSalesMsg
+    call WriteString
+    call Crlf
+    jmp show_admin_options
+
+exit_system:
+    INVOKE ExitProcess, 0
+
+user_flow:
+    ret    ; Continue with normal user flow
+check_user_type ENDP
 
 ; --- Module 1: Registration ---
 registration_login PROC
@@ -270,6 +495,7 @@ check_user:
     call strcmp                ; Compare password
     je login_successful        ; If equal, login successful
 
+
 next_credential:
     pop edi                    ; Restore pointers from stack
     pop esi
@@ -300,6 +526,10 @@ login_successful:
     call WriteString
     mov edx, OFFSET username
     call WriteString
+ ; Store current user index
+    mov eax, NUM_USERS
+    sub eax, ecx        ; Calculate user index based on loop counter
+    mov currentUserIndex, eax
     call Crlf
     ret
 
@@ -353,6 +583,7 @@ strings_not_equal:
 strcmp ENDP
 
 ; --- Module 2: Destination ---
+; --- Module 2: Destination ---
 dest_date_selection PROC
     ; Get departure venue
 depart_input:
@@ -369,6 +600,8 @@ depart_input:
     jmp get_destination
 
 invalid_depart:
+    mov edx, OFFSET invalidChoiceMsg
+    call WriteString
     jmp depart_input    ; Ask again for valid input
 
     ; Get destination
@@ -388,32 +621,222 @@ get_destination:
     cmp al, bl
     je same_venue_error
     
+    ; Store destination choice
     mov destChoice, al
-    jmp valid_dest
+    jmp get_date
+
+invalid_dest:
+    mov edx, OFFSET invalidChoiceMsg
+    call WriteString
+    jmp get_destination
 
 same_venue_error:
     mov edx, OFFSET invalidDepartMsg
     call WriteString
-    jmp depart_input    ; Go back to departure selection
+    jmp get_destination
 
-invalid_dest:
-    jmp get_destination  ; Ask again for valid destination
+; Date input and validation
+get_date:
+    ; Clear any previous date input
+    mov edi, OFFSET dateInput
+    mov ecx, 5
+    mov al, 0
+    rep stosb
+    
+    ; Reset EDI to start of dateInput
+    mov edi, OFFSET dateInput
 
-valid_dest:
-    ; Continue with date input as before
-date_input:
+    ; Prompt for date
     mov edx, OFFSET datePrompt
     call WriteString
+    
+    ; Read date as string
     mov edx, OFFSET dateInput
-    mov ecx, SIZEOF dateInput
+    mov ecx, 5          ; 4 digits + null terminator
     call ReadString
-
-    ; Rest of the date validation code remains the same...
-    ; ... (keep existing date validation code)
-
+    
+    ; Validate date format (must be 4 digits)
+    cmp eax, 4
+    jne invalid_date_format
+    
+    ; Extract month (first two digits)
+    mov edi, OFFSET dateInput
+    xor eax, eax
+    mov al, [edi]       ; First digit
+    sub al, '0'
+    mov bl, 10
+    mul bl
+    mov bl, [edi+1]     ; Second digit
+    sub bl, '0'
+    add al, bl
+    
+    ; Validate month (1-12)
+    cmp al, 1
+    jl invalid_month
+    cmp al, 12
+    jg invalid_month
+    
+    ; Store month for later use
+    push eax            ; Save month value
+    
+    ; Extract day (last two digits)
+    xor eax, eax
+    mov al, [edi+2]     ; Third digit
+    sub al, '0'
+    mov bl, 10
+    mul bl
+    mov bl, [edi+3]     ; Fourth digit
+    sub bl, '0'
+    add al, bl
+    
+    ; Get the month back
+    pop ebx             ; Restore month value
+    
+    ; Validate day based on month
+    dec ebx             ; Adjust for 0-based index
+    movzx ecx, daysInMonth[ebx]  ; Get days in this month
+    
+    ; Special case for February in leap year (2025 is not a leap year)
+    
+    ; Check if day is valid for this month
+    cmp al, 1
+    jl invalid_day
+    cmp al, cl
+    jg invalid_day
+    
+    ; Store day for later use
+    push eax            ; Save day value
+    
+    ; Display the selected date
+    mov edx, OFFSET dateConfirmMsg
+    call WriteString
+    
+    ; Get month name
+    mov eax, 0
+    mov al, bl          ; Month index (0-based)
+    
+    ; Calculate offset to month name
+    ; Each month name has variable length + null terminator
+    mov esi, OFFSET monthNames
+    mov ecx, 0          ; Counter for months
+    
+find_month_loop:
+    cmp ecx, eax
+    je found_month
+    
+    ; Skip to next month name
+    mov dl, 0           ; Look for null terminator
+find_null:
+    cmp [esi], dl
+    je found_null
+    inc esi
+    jmp find_null
+    
+found_null:
+    inc esi             ; Move past null terminator
+    inc ecx
+    jmp find_month_loop
+    
+found_month:
+    ; ESI now points to the month name
+    mov edx, esi
+    call WriteString
+    
+    ; Write space
+    mov al, ' '
+    call WriteChar
+    
+    ; Write day with suffix
+    pop eax             ; Restore day value
+    push eax            ; Save it again
+    call WriteDec
+    
+    ; Add appropriate suffix (st, nd, rd, th)
+    mov ebx, eax
+    
+    ; Special cases for 11, 12, 13
+    cmp ebx, 11
+    je use_th
+    cmp ebx, 12
+    je use_th
+    cmp ebx, 13
+    je use_th
+    
+    ; Get last digit
+    mov edx, ebx
+    mov ebx, 10
+    mov eax, edx
+    xor edx, edx
+    div ebx             ; EDX now has remainder (last digit)
+    
+    ; Choose suffix based on last digit
+    cmp edx, 1
+    je use_st
+    cmp edx, 2
+    je use_nd
+    cmp edx, 3
+    je use_rd
+    jmp use_th
+    
+use_st:
+    mov edx, OFFSET dateSuffix
+    jmp write_suffix
+    
+use_nd:
+    mov edx, OFFSET dateSuffix + 3  ; Skip "st" + null
+    jmp write_suffix
+    
+use_rd:
+    mov edx, OFFSET dateSuffix + 6  ; Skip "st" + null + "nd" + null
+    jmp write_suffix
+    
+use_th:
+    mov edx, OFFSET dateSuffix + 9  ; Skip "st" + null + "nd" + null + "rd" + null
+    
+write_suffix:
+    call WriteString
+    
+    ; Write year
+    mov edx, OFFSET yearDisplay
+    call WriteString
+    call Crlf
+    
+    ; Ask for confirmation
+    mov edx, OFFSET confirmPrompt
+    call WriteString
+    call ReadInt
+    
+    ; Check confirmation
+    cmp al, 1
+    je date_confirmed
+    
+    ; If not confirmed, ask for date again
+    jmp get_date
+    
 date_confirmed:
+    ; Restore day value
+    pop eax
+    
+    ; Return with valid date
     ret
+    
+invalid_date_format:
+    mov edx, OFFSET invalidDateMsg
+    call WriteString
+    jmp get_date
+    
+invalid_month:
+    mov edx, OFFSET invalidMonthMsg
+    call WriteString
+    jmp get_date
+    
+invalid_day:
+    mov edx, OFFSET invalidDayMsg
+    call WriteString
+    jmp get_date
+    
 dest_date_selection ENDP
+
 
 
 ; --- Module 3: Service ---
@@ -446,36 +869,53 @@ service_input:
     jg invalid_service
     mov serviceChoice, al
 
-    ; Display appropriate seat layout
-    call Crlf
-    mov edx, OFFSET seatLayout
-    call WriteString
-    call Crlf
+  
   
 
 seat_selection:
+    ; Update and display the dynamic seat layout with taken seats
+    call update_seat_layout
+    mov edx, OFFSET dynamicSeatLayout
+    call WriteString
+    call Crlf
+
     mov edx, OFFSET seatPrompt
     call WriteString
     
     ; Read seat selection
     mov edx, OFFSET selectedSeat
-    mov ecx, 3          ; Max length (2 chars + null)
+    mov ecx, 3
     call ReadString
     
     ; Check if user wants to go back
     mov al, [selectedSeat]
     cmp al, 'B'
-    je service_input    ; Loop back to service selection
-    
-    ; Validate seat format (e.g., A1, B2, etc.)
+    jne not_back_command
+    mov al, [selectedSeat + 1]
+    test al, al
+    je service_input
+
+not_back_command:
+    ; Validate seat format
     call validate_seat
-    jc invalid_seat     ; If carry flag set, invalid seat
-    
-    ; Check if seat matches selected service class
+    jc invalid_seat
+
+    ; Check if seat is available
+    call check_seat_availability
+    jc seat_taken
+
+    ; Check service class match
     call check_service_match
-    jc wrong_class      ; If carry flag set, wrong class
-    
-    ret                 ; Valid seat selected
+    jc wrong_class
+
+    ; Store booking if everything is valid
+    call store_booking
+    ret
+
+seat_taken:
+    mov edx, OFFSET seatTakenMsg
+    call WriteString
+    jmp seat_selection
 
 invalid_service:
     jmp service_input
@@ -651,7 +1091,7 @@ get_payment:
     call Crlf
 
 payment_input:
-    ; Get payment amount
+   ; Get payment amount
     mov edx, OFFSET paymentPrompt
     call WriteString
     call ReadInt       ; Read integer part (whole ringgit)
@@ -661,12 +1101,11 @@ payment_input:
 
     ; Compare with required amount
     movzx ebx, paymentAmount
-    cmp eax, ebx
-    jl insufficient_payment
+    cmp eax, ebx      ; Compare input amount with required amount
+    jl insufficient_payment  ; Jump if input is less than required
 
     ; If we get here, payment is sufficient
-    ; Calculate change
-    sub eax, ebx      ; eax = input - required
+    sub eax, ebx      ; Calculate change
     mov changeAmount, eax
 
     ; Display change amount if any
@@ -695,6 +1134,21 @@ payment_exact:
     call Crlf
 
 payment_done:
+    ; Record sales data
+    mov salesData, 1    ; Mark that we have sales data
+    mov eax, inputAmount
+    add totalSales, eax    ; Add to total sales
+    inc totalTicketCount       ; Increment total ticket count
+    
+    ; Record ticket type
+    movzx eax, serviceChoice
+    cmp al, 1
+    jne record_economy
+    inc businessCount
+    jmp sales_recorded
+record_economy:
+    inc economyCount
+sales_recorded:
     ret
 
 payment_processing ENDP
@@ -725,6 +1179,104 @@ info_display PROC
     mul ebx                      ; Calculate offset
     add eax, OFFSET cityNames    ; Get address of city name
     mov edx, eax
+    call WriteString
+    call Crlf
+
+      ; Display Date
+    mov edx, OFFSET dateDisplayMsg
+    call WriteString
+    
+    ; Display month name
+    mov ebx, OFFSET monthNames
+    movzx ecx, BYTE PTR [dateInput]    ; Get first digit of month
+    sub cl, '0'
+    mov al, 10
+    mul cl
+    movzx ecx, BYTE PTR [dateInput + 1] ; Get second digit
+    sub cl, '0'
+    add al, cl
+    dec al                              ; Convert to 0-based index
+    
+    ; Find correct month name
+    xor ecx, ecx
+    mov cl, al
+find_month_name:
+    cmp ecx, 0
+    je show_month
+    
+next_month:
+    cmp BYTE PTR [ebx], 0
+    je skip_month
+    inc ebx
+    jmp next_month
+skip_month:
+    inc ebx
+    dec ecx
+    jmp find_month_name
+    
+show_month:
+    mov edx, ebx
+    call WriteString
+    
+    ; Display space
+    mov al, ' '
+    call WriteChar
+    
+    ; Display day with suffix
+    movzx eax, BYTE PTR [dateInput + 2]
+    sub al, '0'
+    mov bl, 10
+    mul bl
+    movzx ebx, BYTE PTR [dateInput + 3]
+    sub bl, '0'
+    add al, bl
+    
+    ; Display the day number
+    push eax
+    call WriteDec
+    
+    ; Add appropriate suffix
+    pop eax
+    
+    ; Check for special cases (11th, 12th, 13th)
+    cmp al, 11
+    je use_th_suffix
+    cmp al, 12
+    je use_th_suffix
+    cmp al, 13
+    je use_th_suffix
+    
+    ; Get last digit
+    mov bl, 10
+    div bl              ; AH contains last digit
+    mov al, ah
+    
+    ; Choose suffix
+    cmp al, 1
+    je use_st_suffix
+    cmp al, 2
+    je use_nd_suffix
+    cmp al, 3
+    je use_rd_suffix
+    jmp use_th_suffix
+    
+use_st_suffix:
+    mov edx, OFFSET dateSuffix
+    jmp show_date_suffix
+use_nd_suffix:
+    mov edx, OFFSET dateSuffix + 3
+    jmp show_date_suffix
+use_rd_suffix:
+    mov edx, OFFSET dateSuffix + 6
+    jmp show_date_suffix
+use_th_suffix:
+    mov edx, OFFSET dateSuffix + 9
+    
+show_date_suffix:
+    call WriteString
+    
+    ; Display year
+    mov edx, OFFSET yearDisplay
     call WriteString
     call Crlf
 
@@ -797,8 +1349,52 @@ show_merchant:
     call Crlf
 
 receipt_done:
+ call Crlf
+    
+   ; Store ticket information for current user
+mov esi, currentUserIndex
+movzx eax, userTicketCount[esi]    ; Get current count
+mov edi, 2                     ; Each ticket takes 2 bytes
+mul edi                        ; EAX = count * 2
+mov edi, MAX_TICKETS
+push eax                       ; Save the offset
+mov eax, currentUserIndex
+mul edi                        ; EAX = userIndex * MAX_TICKETS
+lea edi, ticketHistory[eax]    ; Point to user's storage
+pop eax                        ; Restore the offset
+add edi, eax                   ; Point to next free slot
+
+    ; Store seat information
+    mov al, [selectedSeat]
+    mov [edi + ecx], al       ; Store seat letter
+    mov al, [selectedSeat + 1]
+    mov [edi + ecx + 1], al   ; Store seat number
+    inc BYTE PTR userTicketCount[esi] ; Increment ticket count for user
+
+show_logout_options:
+    mov edx, OFFSET logoutOptionsMsg
+    call WriteString
+    call ReadInt
+    
+    cmp al, 1
+    je do_logout
+    cmp al, 2
+    je do_exit
+    
+    ; Invalid choice
+    mov edx, OFFSET invalidChoiceMsg
+    call WriteString
+    jmp show_logout_options
+
+do_logout:
+    jmp check_user_type    ; Return to user type selection
+
+do_exit:
+    INVOKE ExitProcess, 0
+
     ret
 info_display ENDP
+
 
 ; --- Utility: Print RM amount from cents (e.g., 1234 = RM12.34) ---
 print_price PROC
@@ -839,4 +1435,353 @@ print_cents:
     pop eax
     ret
 print_price ENDP
+
+check_seat_availability PROC
+    ; Input: selectedSeat contains seat selection
+    ;        dateInput contains selected date
+    ; Output: Carry flag set if seat is taken, clear if available
+    push eax
+    push ebx
+    push ecx
+    push edx
+    push esi
+    push edi
+
+    ; Convert date input to comparable format
+    movzx eax, BYTE PTR [dateInput]      ; First digit of month
+    sub al, '0'
+    mov bl, 10
+    mul bl
+    movzx ebx, BYTE PTR [dateInput + 1]  ; Second digit of month
+    sub bl, '0'
+    add al, bl                           ; AL now contains month number
+    mov dl, al                           ; Save month in DL
+
+    movzx eax, BYTE PTR [dateInput + 2]  ; First digit of day
+    sub al, '0'
+    mov bl, 10
+    mul bl
+    movzx ebx, BYTE PTR [dateInput + 3]  ; Second digit of day
+    sub bl, '0'
+    add al, bl                           ; AL now contains day number
+    mov dh, al                           ; Save day in DH
+
+    ; Check against existing bookings
+    mov esi, OFFSET seatBookings
+    mov ecx, MAX_TICKETS
+
+check_booking_loop:
+    ; If entry is empty (month = 0), skip it
+    cmp BYTE PTR [esi], 0
+    je next_booking
+    
+    ; Compare month
+    cmp [esi], dl
+    jne next_booking
+    
+    ; Compare day
+    cmp [esi + 1], dh
+    jne next_booking
+    
+    ; Compare seat row
+    mov al, [selectedSeat]
+    cmp [esi + 2], al
+    jne next_booking
+    
+    ; Compare seat number
+    mov al, [selectedSeat + 1]
+    cmp [esi + 3], al
+    je seat_is_taken
+
+next_booking:
+    add esi, 4        ; Move to next booking entry
+    loop check_booking_loop
+    
+    ; Seat is available
+    clc               ; Clear carry flag
+    jmp check_done
+
+seat_is_taken:
+    stc               ; Set carry flag
+
+check_done:
+    pop edi
+    pop esi
+    pop edx
+    pop ecx
+    pop ebx
+    pop eax
+    ret
+check_seat_availability ENDP
+
+update_seat_layout PROC
+    ; Creates a dynamic seat layout showing taken seats
+    push eax
+    push ebx
+    push ecx
+    push edx
+    push esi
+    push edi
+
+    ; First, copy the original layout to dynamic layout
+    mov esi, OFFSET seatLayout
+    mov edi, OFFSET dynamicSeatLayout
+    mov ecx, 255
+    rep movsb
+
+    ; Get current date in comparable format
+    movzx eax, BYTE PTR [dateInput]      ; Month first digit
+    sub al, '0'
+    mov bl, 10
+    mul bl
+    movzx ebx, BYTE PTR [dateInput + 1]  ; Month second digit
+    sub bl, '0'
+    add al, bl                           ; AL = month
+    mov dl, al                           ; Store month in DL
+
+    movzx eax, BYTE PTR [dateInput + 2]  ; Day first digit
+    sub al, '0'
+    mov bl, 10
+    mul bl
+    movzx ebx, BYTE PTR [dateInput + 3]  ; Day second digit
+    sub bl, '0'
+    add al, bl                           ; AL = day
+    mov dh, al                           ; Store day in DH
+
+    ; Now mark taken seats by scanning the seatBookings array
+    mov esi, OFFSET seatBookings
+    mov ecx, MAX_TICKETS
+
+update_layout_loop:
+    ; Check if this is a valid booking (month != 0)
+    cmp BYTE PTR [esi], 0
+    je next_seat_update
+
+    ; Compare current date with booking date
+    mov al, [esi]      ; Booking month
+    cmp al, dl         ; Compare with our month
+    jne next_seat_update
+
+    mov al, [esi + 1]  ; Booking day
+    cmp al, dh         ; Compare with our day
+    jne next_seat_update
+
+    ; If we get here, this booking is for the current date
+    ; Now locate the corresponding seat in the dynamicSeatLayout
+    mov al, [esi + 2]  ; Get row letter (A-E)
+    mov bl, [esi + 3]  ; Get seat number (1-4)
+
+    ; Find the correct location in dynamicSeatLayout
+    ; First, calculate the start of the correct row in the layout
+    mov edi, OFFSET dynamicSeatLayout
+
+    ; Row A starts at line 3, which is after the header lines
+    ; Row B starts at line 4, etc.
+    ; Each row has CRLF at the end, so offset is 2 bytes per line
+    cmp al, 'A'
+    je row_A
+    cmp al, 'B'
+    je row_B
+    cmp al, 'C'
+    je row_C
+    cmp al, 'D'
+    je row_D
+    cmp al, 'E'
+    je row_E
+    jmp next_seat_update ; Invalid row
+
+row_A:
+    add edi, 52  ; Offset to beginning of "A [ ][ ]   [ ][ ]"
+    jmp find_column
+row_B:
+    add edi, 68  ; Offset to beginning of "B [ ][ ]   [ ][ ]"
+    jmp find_column
+row_C:
+    add edi, 102  ; Offset to beginning of "C [ ][ ]   [ ][ ]"
+    jmp find_column
+row_D:
+    add edi, 118  ; Offset to beginning of "D [ ][ ]   [ ][ ]"
+    jmp find_column
+row_E:
+    add edi, 134  ; Offset to beginning of "E [ ][ ]   [ ][ ]"
+
+find_column:
+    ; Now find the correct column (seat position)
+    cmp bl, '1'
+    je seat_1
+    cmp bl, '2'
+    je seat_2
+    cmp bl, '3'
+    je seat_3
+    cmp bl, '4'
+    je seat_4
+    jmp next_seat_update ; Invalid seat number
+
+seat_1:
+    add edi, 3  ; Position at "[ ]" - first seat
+    jmp mark_x
+seat_2:
+    add edi, 6  ; Position at "[ ]" - second seat
+    jmp mark_x
+seat_3:
+    add edi, 12  ; Position at "[ ]" - third seat (after gap)
+    jmp mark_x
+seat_4:
+    add edi, 15  ; Position at "[ ]" - fourth seat
+
+mark_x:
+    ; Now we're positioned at the first bracket of the seat
+    ; We need to replace the space between brackets with X
+    inc edi  ; Move to the space character between [ and ]
+    mov BYTE PTR [edi], 'X'  ; Replace space with X
+
+next_seat_update:
+    add esi, 4  ; Move to next booking entry
+    loop update_layout_loop
+
+    pop edi
+    pop esi
+    pop edx
+    pop ecx
+    pop ebx
+    pop eax
+    ret
+update_seat_layout ENDP
+
+mark_seat_taken PROC
+    ; Input: ESI points to booking entry (month, day, row, number)
+    push eax
+    push ebx
+    push ecx
+    push edx
+    push esi
+    push edi
+
+    ; Find the correct location in dynamicSeatLayout
+    mov al, [esi + 2]     ; Get row letter (A-E)
+    mov bl, [esi + 3]     ; Get seat number (1-4)
+
+    ; Calculate position in layout
+    mov edi, OFFSET dynamicSeatLayout
+
+    ; Determine row offset
+    cmp al, 'A'
+    je row_A_pos
+    cmp al, 'B'
+    je row_B_pos
+    cmp al, 'C'
+    je row_C_pos
+    cmp al, 'D'
+    je row_D_pos
+    cmp al, 'E'
+    je row_E_pos
+    jmp mark_done         ; Invalid row
+
+row_A_pos:
+    add edi, 52           ; Position at start of row A
+    jmp find_seat_pos
+row_B_pos:
+    add edi, 68           ; Position at start of row B
+    jmp find_seat_pos
+row_C_pos:
+    add edi, 102          ; Position at start of row C
+    jmp find_seat_pos
+row_D_pos:
+    add edi, 118          ; Position at start of row D
+    jmp find_seat_pos
+row_E_pos:
+    add edi, 134          ; Position at start of row E
+
+find_seat_pos:
+    ; Find seat column
+    cmp bl, '1'
+    je col_1_pos
+    cmp bl, '2'
+    je col_2_pos
+    cmp bl, '3'
+    je col_3_pos
+    cmp bl, '4'
+    je col_4_pos
+    jmp mark_done         ; Invalid column
+
+col_1_pos:
+    add edi, 3            ; Position at the first "[ ]"
+    jmp place_x
+col_2_pos:
+    add edi, 6            ; Position at the second "[ ]"
+    jmp place_x
+col_3_pos:
+    add edi, 12           ; Position at the third "[ ]" (after gap)
+    jmp place_x
+col_4_pos:
+    add edi, 15           ; Position at the fourth "[ ]"
+
+place_x:
+    ; Now we're at the first bracket of the seat
+    inc edi               ; Move to space between brackets
+    mov BYTE PTR [edi], 'X'  ; Replace with X
+
+mark_done:
+    pop edi
+    pop esi
+    pop edx
+    pop ecx
+    pop ebx
+    pop eax
+    ret
+mark_seat_taken ENDP
+
+store_booking PROC
+    push eax
+    push ebx
+    push ecx
+    push edx
+    push esi
+
+    ; Find next free booking slot
+    mov esi, OFFSET seatBookings
+    mov ecx, MAX_TICKETS
+
+find_slot:
+    cmp BYTE PTR [esi], 0
+    je slot_found
+    add esi, 4
+    loop find_slot
+    jmp store_done     ; No free slots (shouldn't happen with MAX_TICKETS check)
+
+slot_found:
+    ; Store month
+    mov al, [dateInput]
+    sub al, '0'
+    mov bl, 10
+    mul bl
+    mov bl, [dateInput + 1]
+    sub bl, '0'
+    add al, bl
+    mov [esi], al
+
+    ; Store day
+    mov al, [dateInput + 2]
+    sub al, '0'
+    mov bl, 10
+    mul bl
+    mov bl, [dateInput + 3]
+    sub bl, '0'
+    add al, bl
+    mov [esi + 1], al
+
+    ; Store seat row and number
+    mov al, [selectedSeat]
+    mov [esi + 2], al
+    mov al, [selectedSeat + 1]
+    mov [esi + 3], al
+
+store_done:
+    pop esi
+    pop edx
+    pop ecx
+    pop ebx
+    pop eax
+    ret
+store_booking ENDP
 END main
