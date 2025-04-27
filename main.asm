@@ -57,7 +57,7 @@ valid_passwords  BYTE "Rz2023##", 0, (20-9) DUP(0)  ; 8 chars + null + 11 paddin
     ; --- Administrator Module ---
 ; Add this structure for ticket history (add to .data section)
 MAX_TICKETS = 50  ; Maximum number of tickets per user
-ticketHistory     BYTE NUM_USERS DUP(MAX_TICKETS DUP(0))  ; Store seat info for each user
+ticketHistory     BYTE NUM_USERS DUP(MAX_TICKETS DUP(3 DUP(0)))  ; Store seat letter, number, promo for each user ticket
 userTicketCount   BYTE NUM_USERS DUP(0)                    ; Count of tickets per user
 currentUserIndex  DWORD 0                                  ; Store current user index
 adminLoginHeader BYTE "=== TravelOn Bus System Login ===", 0Dh, 0Ah, 0
@@ -73,8 +73,15 @@ totalSalesMsg     BYTE "Total Sales: RM", 0
 ticketCountMsg    BYTE "Total Tickets Sold: ", 0
 businessCountMsg  BYTE "Business Class Tickets: ", 0
 economyCountMsg   BYTE "Economy Class Tickets: ", 0
+salesTargetMsg    BYTE "Sales Target: RM", 0
+remainingSalesMsg BYTE "Remaining to Target: RM", 0
+targetMetMsg      BYTE "Sales Target Met/Exceeded!", 0Dh, 0Ah, 0
+promoNoneMsg      BYTE " (Promo: None)", 0
+promoElderlyMsg   BYTE " (Promo: Elderly)", 0
+promoKidMsg       BYTE " (Promo: Kid)", 0
 salesData         BYTE 0    ; Flag to track if any sales occurred
 totalSales        DWORD 0   ; Total sales amount in cents
+salesTarget       DWORD 100000 ; Sales target in cents (RM 1000.00)
 totalTicketCount  BYTE 0    ; Total number of tickets sold
 businessCount     BYTE 0    ; Number of business class tickets
 economyCount      BYTE 0    ; Number of economy class tickets
@@ -82,6 +89,7 @@ adminOptionsMsg   BYTE "Options:", 0Dh, 0Ah
                  BYTE "1. Return to User Mode", 0Dh, 0Ah
                  BYTE "2. Exit System", 0Dh, 0Ah
                  BYTE "Select option (1-2): ", 0
+
 
    ; --- Registration & Login ---
     username BYTE 20 DUP(0)
@@ -291,31 +299,76 @@ admin_dashboard:
     mov edx, OFFSET adminWelcomeMsg
     call WriteString
     call Crlf
-    
-    ; Add sales summary first
+
+    ; Display Sales Summary
     mov edx, OFFSET salesHeaderMsg
     call WriteString
+
+    ; Display Total Sales
+    mov edx, OFFSET totalSalesMsg
+    call WriteString
+    mov eax, totalSales
+    call print_price ; Use print_price to format
+    call Crlf
+
+    ; Display Sales Target
+    mov edx, OFFSET salesTargetMsg
+    call WriteString
+    mov eax, salesTarget
+    call print_price
+    call Crlf
+
+    ; Calculate and Display Remaining Sales
+    mov eax, salesTarget
+    sub eax, totalSales
+    jc target_already_met ; Jump if totalSales > salesTarget (carry is set)
+
+    ; Target not met yet
+    mov edx, OFFSET remainingSalesMsg
+    call WriteString
+    call print_price ; EAX already contains remaining amount
+    call Crlf
+    jmp display_ticket_details
+
+target_already_met:
+    mov edx, OFFSET targetMetMsg
+    call WriteString
+
+display_ticket_details:
+    call Crlf
     mov edx, OFFSET ticketCountMsg
     call WriteString
-    movzx eax, totalTicketCount 
+    movzx eax, totalTicketCount
     call WriteDec
     call Crlf
-    
+
+    ; Display Business/Economy Counts
+    mov edx, OFFSET businessCountMsg
+    call WriteString
+    movzx eax, businessCount
+    call WriteDec
+    call Crlf
+    mov edx, OFFSET economyCountMsg
+    call WriteString
+    movzx eax, economyCount
+    call WriteDec
+    call Crlf
+    call Crlf
+
     ; Check if sales data exists
     mov ecx, NUM_USERS          ; Number of users to check
     xor esi, esi               ; User index counter
     mov bl, 0                  ; Flag for any tickets found
 
     ; Start checking tickets for each user
-
 check_user_tickets:
-    cmp userTicketCount[esi], 0 
+    cmp userTicketCount[esi], 0
     je next_user
-    
+
     ; Display user name
     push ecx
     push esi
-    
+
     ; Calculate user name address
     mov eax, esi
     mov ebx, 20         ; Each username entry is 20 bytes
@@ -323,20 +376,22 @@ check_user_tickets:
     add eax, OFFSET valid_users
     mov edx, eax
     call WriteString
-    
+
     ; Display user's tickets
     mov al, ':'
     call WriteChar
     call Crlf
-    
+
     ; Display each ticket
     xor ecx, ecx
     movzx ecx, userTicketCount[esi]
-    mov edi, MAX_TICKETS
+    mov edi, 3 ; Each ticket record is now 3 bytes
     mov eax, esi
     mul edi
+    mov ebx, MAX_TICKETS
+    mul ebx ; EAX = user_index * MAX_TICKETS * 3 (start offset in bytes)
     lea edi, ticketHistory[eax]
-    
+
 display_tickets:
     push ecx
     mov al, '['
@@ -347,28 +402,56 @@ display_tickets:
     call WriteChar
     mov al, ']'
     call WriteChar
-    mov al, ' '
+
+    ; Display Promo Type
+    mov al, [edi + 2]   ; Get promo choice byte
+    cmp al, 1
+    je show_elderly_promo
+    cmp al, 2
+    je show_kid_promo
+
+show_none_promo: ; Default case if 0 or other value
+    mov edx, OFFSET promoNoneMsg
+    call WriteString
+    jmp next_ticket_display
+
+show_elderly_promo:
+    mov edx, OFFSET promoElderlyMsg
+    call WriteString
+    jmp next_ticket_display
+
+show_kid_promo:
+    mov edx, OFFSET promoKidMsg
+    call WriteString
+
+next_ticket_display:
+    mov al, ' ' ; Add space after promo info
     call WriteChar
-    add edi, 2          ; Move to next ticket
+    add edi, 3          ; Move to next ticket (3 bytes)
     pop ecx
     loop display_tickets
-    
+
     call Crlf
     mov bl, 1           ; Set flag that tickets were found
-    
+
     pop esi
     pop ecx
-    
+
 next_user:
     inc esi
-    loop check_user_tickets
-    
+    dec ecx
+    jnz check_user_tickets_near
+    jmp after_check_user_loop
+check_user_tickets_near:
+    jmp check_user_tickets
+after_check_user_loop:
+
     ; If no tickets found
     test bl, bl
     jnz show_admin_options
     mov edx, OFFSET noSalesMsg
     call WriteString
-    
+
 show_admin_options:
     call Crlf
     mov edx, OFFSET adminOptionsMsg
@@ -599,6 +682,8 @@ depart_input:
     jmp get_destination
 
 invalid_depart:
+    mov edx, OFFSET invalidChoiceMsg
+    call WriteString
     jmp depart_input    ; Ask again for valid input
 
     ; Get destination
@@ -627,6 +712,8 @@ same_venue_error:
     jmp depart_input    ; Go back to departure selection
 
 invalid_dest:
+    mov edx, OFFSET invalidChoiceMsg
+    call WriteString
     jmp get_destination  ; Ask again for valid destination
 
 valid_dest:
@@ -682,12 +769,12 @@ date_input:
     cmp al, bl
     jg invalid_day
 
-  ; Display the confirmation
+    ; Display the confirmation
     Call Crlf
     mov edx, OFFSET dateConfirmMsg
     call WriteString
     
-    ; Find and display month name (corrected version)
+    ; Find and display month name
     mov ebx, OFFSET monthNames
     mov ecx, [esp]        ; Get month index from stack (0-based)
     
@@ -811,6 +898,7 @@ date_confirmed:
     pop ebx     ; Balance the stack by removing the saved month number
     ret
 dest_date_selection ENDP
+
 
 
 ; --- Module 3: Service ---
@@ -1107,11 +1195,12 @@ payment_exact:
     mov changeAmount, 0    ; Ensure change is zero
     call Crlf
 
+    ; totalSales now tracks the actual ticket prices rather than payments received
 payment_done:
     ; Record sales data
-    mov salesData, 1    ; Mark that we have sales data
-    mov eax, inputAmount
-    add totalSales, eax    ; Add to total sales
+    mov salesData, 1        ; Mark that we have sales data
+    movzx eax, paymentAmount ; Get the actual ticket price (includes SST)
+    add totalSales, eax     ; Add actual ticket price to total sales
     inc totalTicketCount       ; Increment total ticket count
     
     ; Record ticket type
@@ -1328,21 +1417,24 @@ receipt_done:
    ; Store ticket information for current user
 mov esi, currentUserIndex
 movzx eax, userTicketCount[esi]    ; Get current count
-mov edi, 2                     ; Each ticket takes 2 bytes
-mul edi                        ; EAX = count * 2
-mov edi, MAX_TICKETS
-push eax                       ; Save the offset
+mov edi, 3                     ; Each ticket takes 3 bytes (SeatLetter, SeatNum, Promo)
+mul edi                        ; EAX = count * 3 (byte offset within this user's block)
+mov edi, MAX_TICKETS * 3       ; Size of one user's ticket block in bytes
+push eax                       ; Save the offset within the block
 mov eax, currentUserIndex
-mul edi                        ; EAX = userIndex * MAX_TICKETS
-lea edi, ticketHistory[eax]    ; Point to user's storage
-pop eax                        ; Restore the offset
-add edi, eax                   ; Point to next free slot
+mul edi                        ; EAX = userIndex * (MAX_TICKETS * 3)
+lea edi, ticketHistory[eax]    ; Point to start of user's storage block
+pop eax                        ; Restore the offset within the block
+add edi, eax                   ; Point to next free slot (start of 3-byte record)
 
-    ; Store seat information
+    ; Store seat information and promo
     mov al, [selectedSeat]
-    mov [edi + ecx], al       ; Store seat letter
+    mov [edi], al       ; Store seat letter
     mov al, [selectedSeat + 1]
-    mov [edi + ecx + 1], al   ; Store seat number
+    mov [edi + 1], al   ; Store seat number
+    movzx eax, promoChoice ; Get promo choice (0, 1, or 2)
+    mov [edi + 2], al   ; Store promo choice
+
     inc BYTE PTR userTicketCount[esi] ; Increment ticket count for user
 
 show_logout_options:
