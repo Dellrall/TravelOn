@@ -24,7 +24,7 @@ INCLUDE Irvine32.inc
 ;1) Persistence data (if possible) 
 ;2) Ability to register user(if possible)
 ;3) Redesign the whole UI(if possible)
-;4)�More
+;4) More
 
 ; Add external declarations for Irvine32 functions
 ExitProcess PROTO, dwExitCode:DWORD
@@ -57,7 +57,7 @@ valid_passwords  BYTE "Rz2023##", 0, (20-9) DUP(0)  ; 8 chars + null + 11 paddin
     ; --- Administrator Module ---
 ; Add this structure for ticket history (add to .data section)
 MAX_TICKETS = 50  ; Maximum number of tickets per user
-ticketHistory     BYTE NUM_USERS DUP(MAX_TICKETS DUP(3 DUP(0)))  ; Store seat letter, number, promo for each user ticket
+ticketHistory     BYTE NUM_USERS DUP(MAX_TICKETS DUP(7 DUP(0)))  ; Updated to 7 bytes per ticket
 userTicketCount   BYTE NUM_USERS DUP(0)                    ; Count of tickets per user
 currentUserIndex  DWORD 0                                  ; Store current user index
 adminLoginHeader BYTE "=== TravelOn Bus System Login ===", 0Dh, 0Ah, 0
@@ -89,6 +89,7 @@ adminOptionsMsg   BYTE "Options:", 0Dh, 0Ah
                  BYTE "1. Return to User Mode", 0Dh, 0Ah
                  BYTE "2. Exit System", 0Dh, 0Ah
                  BYTE "Select option (1-2): ", 0
+
 
 
    ; --- Registration & Login ---
@@ -198,7 +199,7 @@ dynamicSeatLayout BYTE 255 DUP(0)  ; Buffer for dynamic seat layout
 
     ; --- Display Messages ---
     dateDisplayMsg BYTE "Date: ", 0
-    paymentPrompt BYTE "Enter Payment Amount: RM", 0
+    paymentPrompt BYTE "Enter Payment Amount (in cents, e.g., 4770 for RM47.70): ", 0 ; Modified prompt
     receiptMsg BYTE "----- Receipt -----", 0Dh, 0Ah, 0
     destMsg    BYTE "Destination: ", 0
     seatsMsg   BYTE "Seat: ", 0    ; Remove the hardcoded A1
@@ -206,9 +207,10 @@ dynamicSeatLayout BYTE 255 DUP(0)  ; Buffer for dynamic seat layout
     departMsg  BYTE "Depart: 08:00", 0Dh, 0Ah, 0
     arriveMsg  BYTE "Arrive: 12:00", 0Dh, 0Ah, 0
     sstMsg     BYTE "SST (6%): RM", 0
-    totalMsg   BYTE "Total Paid: RM", 0
-  
-cityNames    BYTE "Kuala Lumpur", 0, 7 DUP(0)     ; 20 bytes (13 + 7 padding)
+    totalMsg   BYTE "Total Amount: RM", 0
+    amountPaidMsg BYTE "Amount Paid: RM", 0  ; New message for amount paid
+
+    cityNames    BYTE "Kuala Lumpur", 0, 7 DUP(0)     ; 20 bytes (13 + 7 padding)
             BYTE "Kuantan", 0, 12 DUP(0)          ; 20 bytes (8 + 12 padding)
             BYTE "Johor Bahru", 0, 9 DUP(0)       ; 20 bytes (11 + 9 padding)
 
@@ -580,7 +582,7 @@ check_user:
 
 
 next_credential:
-    pop edi                    ; Restore pointers from stack
+    pop edi                    ; Restore registers from stack
     pop esi
     pop ecx                    ; Restore counter
     add esi, 20               ; Move to next username (20 bytes per entry)
@@ -1153,17 +1155,15 @@ get_payment:
     call Crlf
 
 payment_input:
-   ; Get payment amount
-    mov edx, OFFSET paymentPrompt
+   ; Get payment amount (now expected in cents)
+    mov edx, OFFSET paymentPrompt ; Use the modified prompt
     call WriteString
-    call ReadInt       ; Read integer part (whole ringgit)
-    mov ebx, 100      ; Convert to cents
-    mul ebx           ; EAX = ringgit * 100 (now in cents)
+    call ReadInt       ; Read integer (cents) directly into EAX
     mov inputAmount, eax
 
     ; Compare with required amount
     movzx ebx, paymentAmount
-    cmp eax, ebx      ; Compare input amount with required amount
+    cmp eax, ebx      ; Compare input amount (EAX) with required amount (EBX)
     jl insufficient_payment  ; Jump if input is less than required
 
     ; If we get here, payment is sufficient
@@ -1173,7 +1173,7 @@ payment_input:
     ; Display change amount if any
     cmp eax, 0
     je payment_exact
-    
+
     ; Show change amount
     mov edx, OFFSET changeMsg
     call WriteString
@@ -1186,7 +1186,7 @@ insufficient_payment:
     mov edx, OFFSET insufficientMsg
     call WriteString
     movzx eax, paymentAmount
-    call print_price
+    call print_price ; Display required amount in RM format
     call Crlf
     jmp payment_input      ; Ask for payment again
 
@@ -1202,7 +1202,7 @@ payment_done:
     movzx eax, paymentAmount ; Get the actual ticket price (includes SST)
     add totalSales, eax     ; Add actual ticket price to total sales
     inc totalTicketCount       ; Increment total ticket count
-    
+
     ; Record ticket type
     movzx eax, serviceChoice
     cmp al, 1
@@ -1399,6 +1399,13 @@ display_amex:
 
 show_merchant:
     call WriteString
+    call Crlf
+    
+    ; Display Amount Paid (actual user input)
+    mov edx, OFFSET amountPaidMsg
+    call WriteString
+    mov eax, inputAmount
+    call print_price
     call Crlf
 
     ; Display change if any
