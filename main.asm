@@ -24,7 +24,7 @@ INCLUDE Irvine32.inc
 ;1) Persistence data (if possible) 
 ;2) Ability to register user(if possible)
 ;3) Redesign the whole UI(if possible)
-;4)�More
+;4) More
 
 ; Add external declarations for Irvine32 functions
 ExitProcess PROTO, dwExitCode:DWORD
@@ -38,6 +38,71 @@ Crlf PROTO
 WriteInt PROTO
 
 .data
+    ; --- Gruvbox Color Theme ---
+    ; Define Gruvbox colors for more consistent theming
+    gruvboxBg         EQU black     ; Background color (black)
+    gruvboxFg         EQU lightGray ; Default foreground (light gray)
+    gruvboxRed        EQU lightRed  ; Error messages
+    gruvboxGreen      EQU green     ; Success messages
+    gruvboxYellow     EQU yellow    ; Headers
+    gruvboxBlue       EQU blue      ; Accent color
+    gruvboxPurple     EQU magenta   ; Secondary accent
+    gruvboxAqua       EQU cyan      ; Prompts
+    gruvboxOrange     EQU brown     ; Tertiary accent
+    
+    ; Color theme aliases (replacing the previous color definitions)
+    cBgColor         EQU gruvboxBg
+    bgColor          EQU gruvboxBg
+    cFgDefault       EQU gruvboxFg
+    fgDefault        EQU gruvboxFg
+    cFgHeader        EQU gruvboxYellow
+    cFgPrompt        EQU gruvboxAqua
+    cFgSuccess       EQU gruvboxGreen
+    cFgError         EQU gruvboxRed
+    cFgAccent1       EQU gruvboxPurple
+    cFgAccent2       EQU gruvboxBlue
+    cFgArt           EQU gruvboxGreen
+
+    ; --- ASCII Art for User Login ---
+    userLoginArt BYTE "    _    _               _                _       ", 0Dh, 0Ah
+                BYTE "   | |  | |             | |              (_)      ", 0Dh, 0Ah
+                BYTE "   | |  | |___  ___ _ __| |     ___   ___ _ _ __  ", 0Dh, 0Ah
+                BYTE "   | |  | / __|/ _ \ '__| |    / _ \ / __| | '_ \ ", 0Dh, 0Ah
+                BYTE "   | |__| \__ \  __/ |  | |___| (_) | (__| | | | |", 0Dh, 0Ah
+                BYTE "    \____/|___/\___|_|  |______\___/ \___|_|_| |_|", 0Dh, 0Ah, 0
+
+    ; --- ASCII Art for Admin Login ---
+    adminLoginArt BYTE "    _       _           _       _        _             ", 0Dh, 0Ah
+                 BYTE "   / \   __| |_ __ ___ (_)_ __ (_)      / \   _ __ ___ ", 0Dh, 0Ah
+                 BYTE "  / _ \ / _` | '_ ` _ \| | '_ \| |     / _ \ | '__/ _ \", 0Dh, 0Ah
+                 BYTE " / ___ \ (_| | | | | | | | | | | |    / ___ \| | |  __/", 0Dh, 0Ah
+                 BYTE "/_/   \_\__,_|_| |_| |_|_|_| |_|_|   /_/   \_\_|  \___|", 0Dh, 0Ah, 0
+
+    ; --- ASCII Art for Tickets ---
+    ticketAsciiArt BYTE "  _______________________", 0Dh, 0Ah
+                  BYTE " /                       \\", 0Dh, 0Ah
+                  BYTE "/    TravelOn Bus        \\", 0Dh, 0Ah
+                  BYTE "|  =====================  |", 0Dh, 0Ah
+                  BYTE "|     T I C K E T        |", 0Dh, 0Ah
+                  BYTE "|  =====================  |", 0Dh, 0Ah
+                  BYTE "|                         |", 0Dh, 0Ah
+                  BYTE "|                         |", 0Dh, 0Ah
+                  BYTE "|_________________________|", 0Dh, 0Ah, 0
+
+    ; --- ASCII Art for Promo ---
+    promoAsciiArt BYTE "    ____                           ", 0Dh, 0Ah
+                 BYTE "   / __ \_________  ____ ___  ___  ", 0Dh, 0Ah
+                 BYTE "  / /_/ / ___/ __ \/ __ `__ \/ _ \ ", 0Dh, 0Ah
+                 BYTE " / ____/ /  / /_/ / / / / / /  __/ ", 0Dh, 0Ah
+                 BYTE "/_/   /_/   \____/_/ /_/ /_/\___/  ", 0Dh, 0Ah, 0
+                 
+    ; --- ASCII Art for Payment Success ---
+    paymentSuccessArt BYTE "   _____                               __", 0Dh, 0Ah
+                     BYTE "  / ___/___  _________  __________  ___/ /", 0Dh, 0Ah
+                     BYTE "  \__ \/ _ \/ ___/ __ \/ ___/ ___/ / _  / ", 0Dh, 0Ah
+                     BYTE " ___/ /  __/ /__/ /_/ / /  / /__/ /  __/  ", 0Dh, 0Ah
+                     BYTE "/____/\___/\___/\____/_/   \___/_/\___/   ", 0Dh, 0Ah, 0
+
       invalidChoiceMsg BYTE "Invalid choice. Please try again.", 0Dh, 0Ah, 0
     NUM_USERS = 5
     valid_users  BYTE "Roziyani", 0, (20-9) DUP(0)     ; 9 chars + null + 10 padding = 20
@@ -57,7 +122,7 @@ valid_passwords  BYTE "Rz2023##", 0, (20-9) DUP(0)  ; 8 chars + null + 11 paddin
     ; --- Administrator Module ---
 ; Add this structure for ticket history (add to .data section)
 MAX_TICKETS = 50  ; Maximum number of tickets per user
-ticketHistory     BYTE NUM_USERS DUP(MAX_TICKETS DUP(3 DUP(0)))  ; Store seat letter, number, promo for each user ticket
+ticketHistory     BYTE NUM_USERS DUP(MAX_TICKETS DUP(7 DUP(0)))  ; Updated to 7 bytes per ticket
 userTicketCount   BYTE NUM_USERS DUP(0)                    ; Count of tickets per user
 currentUserIndex  DWORD 0                                  ; Store current user index
 adminLoginHeader BYTE "=== TravelOn Bus System Login ===", 0Dh, 0Ah, 0
@@ -89,6 +154,7 @@ adminOptionsMsg   BYTE "Options:", 0Dh, 0Ah
                  BYTE "1. Return to User Mode", 0Dh, 0Ah
                  BYTE "2. Exit System", 0Dh, 0Ah
                  BYTE "Select option (1-2): ", 0
+
 
 
    ; --- Registration & Login ---
@@ -198,7 +264,7 @@ dynamicSeatLayout BYTE 255 DUP(0)  ; Buffer for dynamic seat layout
 
     ; --- Display Messages ---
     dateDisplayMsg BYTE "Date: ", 0
-    paymentPrompt BYTE "Enter Payment Amount: RM", 0
+    paymentPrompt BYTE "Enter Payment Amount (in cents, e.g., 4770 for RM47.70): ", 0 ; Modified prompt
     receiptMsg BYTE "----- Receipt -----", 0Dh, 0Ah, 0
     destMsg    BYTE "Destination: ", 0
     seatsMsg   BYTE "Seat: ", 0    ; Remove the hardcoded A1
@@ -206,9 +272,10 @@ dynamicSeatLayout BYTE 255 DUP(0)  ; Buffer for dynamic seat layout
     departMsg  BYTE "Depart: 08:00", 0Dh, 0Ah, 0
     arriveMsg  BYTE "Arrive: 12:00", 0Dh, 0Ah, 0
     sstMsg     BYTE "SST (6%): RM", 0
-    totalMsg   BYTE "Total Paid: RM", 0
-  
-cityNames    BYTE "Kuala Lumpur", 0, 7 DUP(0)     ; 20 bytes (13 + 7 padding)
+    totalMsg   BYTE "Total Amount: RM", 0
+    amountPaidMsg BYTE "Amount Paid: RM", 0  ; New message for amount paid
+
+    cityNames    BYTE "Kuala Lumpur", 0, 7 DUP(0)     ; 20 bytes (13 + 7 padding)
             BYTE "Kuantan", 0, 12 DUP(0)          ; 20 bytes (8 + 12 padding)
             BYTE "Johor Bahru", 0, 9 DUP(0)       ; 20 bytes (11 + 9 padding)
 
@@ -224,9 +291,12 @@ cityNames    BYTE "Kuala Lumpur", 0, 7 DUP(0)     ; 20 bytes (13 + 7 padding)
 main PROC
 start:  
     call check_user_type 
-     cmp al, 2                  ; Check if admin login
-    je start                   ; If admin, go back to start after logout
-
+    cmp al, 0                  ; Check if user type is invalid/exit
+    je exit_program            ; Exit if we got 0 (exit code)
+    cmp al, 2                  ; Check if admin login
+    je start                   ; If admin (2), go back to start after logout
+    
+    ; If user login (1), proceed with the reservation flow
     call registration_login
     call Crlf           ; Add space between modules
     call Crlf           ; Double space for better visibility
@@ -247,92 +317,140 @@ start:
     call Crlf
     call Crlf
 
-     call info_display         ; This now includes logout options0
+    call info_display         ; This now includes logout options
     jmp start                 ; Return to start after logout
+
+exit_program:
+    INVOKE ExitProcess, 0     ; Exit the program
 main ENDP
 
 ; --- Administrator Module ---
 check_user_type PROC
+    mov eax, (gruvboxBg * 16) + gruvboxFg
+    call SetTextColor ; Reset to default for the screen
     call Clrscr
+
+    mov eax, (gruvboxBg * 16) + gruvboxYellow
+    call SetTextColor
     mov edx, OFFSET adminLoginHeader
     call WriteString
     call Crlf
     
+    mov eax, (gruvboxBg * 16) + gruvboxAqua
+    call SetTextColor
     mov edx, OFFSET userTypePrompt
     call WriteString
+    mov eax, (gruvboxBg * 16) + gruvboxFg ; Color for user input
+    call SetTextColor
     call ReadInt
     
-    cmp al, 2
+    ; Save user choice in a register for validation
+    mov ebx, eax
+    
+    mov eax, (gruvboxBg * 16) + gruvboxFg ; Reset after input
+    call SetTextColor
+    
+    cmp ebx, 2 ; Admin choice
     je admin_login
-    cmp al, 1
+    cmp ebx, 1 ; User choice
     je user_flow
     
-    ; Invalid choice, ask again
+    ; Invalid choice
+    mov eax, (gruvboxBg * 16) + gruvboxRed
+    call SetTextColor
     mov edx, OFFSET invalidChoiceMsg
     call WriteString
-    jmp check_user_type
+    call WaitMsg ; Wait for user to press a key
+    call Clrscr
+    jmp check_user_type ; Try again
 
 admin_login:
+    mov eax, (gruvboxBg * 16) + gruvboxFg
+    call SetTextColor
     call Clrscr
+
+    ; Display Admin ASCII Art
+    mov eax, (gruvboxBg * 16) + gruvboxYellow
+    call SetTextColor
+    mov edx, OFFSET adminLoginArt
+    call WriteString
+    call Crlf
+
+    mov eax, (gruvboxBg * 16) + gruvboxAqua
+    call SetTextColor
     mov edx, OFFSET adminPrompt
     call WriteString
     
-    ; Read secret phrase
-    mov edx, OFFSET username    ; Reuse username buffer for phrase
+    mov eax, (gruvboxBg * 16) + gruvboxFg ; Color for user input
+    call SetTextColor
+    mov edx, OFFSET username
     mov ecx, SIZEOF username
     call ReadString
+    mov eax, (gruvboxBg * 16) + gruvboxFg ; Reset after input
+    call SetTextColor
     
-    ; Compare with secret phrase
     mov edx, OFFSET username
     mov esi, OFFSET secretPhrase
     call strcmp
-    jnc admin_dashboard    ; If match (carry clear), show dashboard
+    jnc admin_dashboard
     
-    ; Wrong phrase
+    mov eax, (gruvboxBg * 16) + gruvboxRed
+    call SetTextColor
     mov edx, OFFSET wrongPhraseMsg
     call WriteString
     call Crlf
-    call ReadChar         ; Wait for key press
+    call ReadChar
     jmp check_user_type
+
 admin_dashboard:
+    mov eax, (gruvboxBg * 16) + gruvboxFg
+    call SetTextColor
     call Clrscr
+
+    mov eax, (gruvboxBg * 16) + gruvboxYellow
+    call SetTextColor
     mov edx, OFFSET adminWelcomeMsg
     call WriteString
     call Crlf
 
-    ; Display Sales Summary
+    ; Check if there's any sales data to display
+    cmp salesData, 0
+    je no_sales_data
+
+    mov eax, (gruvboxBg * 16) + gruvboxFg
+    call SetTextColor
     mov edx, OFFSET salesHeaderMsg
     call WriteString
 
-    ; Display Total Sales
     mov edx, OFFSET totalSalesMsg
     call WriteString
     mov eax, totalSales
-    call print_price ; Use print_price to format
+    call print_price
     call Crlf
 
-    ; Display Sales Target
     mov edx, OFFSET salesTargetMsg
     call WriteString
     mov eax, salesTarget
     call print_price
     call Crlf
 
-    ; Calculate and Display Remaining Sales
     mov eax, salesTarget
     sub eax, totalSales
-    jc target_already_met ; Jump if totalSales > salesTarget (carry is set)
+    jc target_already_met
 
-    ; Target not met yet
     mov edx, OFFSET remainingSalesMsg
     call WriteString
-    call print_price ; EAX already contains remaining amount
+    call print_price
     call Crlf
     jmp display_ticket_details
 
 target_already_met:
+    mov eax, (gruvboxBg * 16) + gruvboxGreen
+    call SetTextColor
     mov edx, OFFSET targetMetMsg
     call WriteString
+    mov eax, (gruvboxBg * 16) + gruvboxFg
+    call SetTextColor
 
 display_ticket_details:
     call Crlf
@@ -342,12 +460,12 @@ display_ticket_details:
     call WriteDec
     call Crlf
 
-    ; Display Business/Economy Counts
     mov edx, OFFSET businessCountMsg
     call WriteString
     movzx eax, businessCount
     call WriteDec
     call Crlf
+    
     mov edx, OFFSET economyCountMsg
     call WriteString
     movzx eax, economyCount
@@ -355,34 +473,28 @@ display_ticket_details:
     call Crlf
     call Crlf
 
-    ; Check if sales data exists
-    mov ecx, NUM_USERS          ; Number of users to check
-    xor esi, esi               ; User index counter
-    mov bl, 0                  ; Flag for any tickets found
+    mov ecx, NUM_USERS
+    xor esi, esi
+    mov bl, 0
 
-    ; Start checking tickets for each user
 check_user_tickets:
     cmp userTicketCount[esi], 0
     je next_user
-
-    ; Display user name
     push ecx
     push esi
-
-    ; Calculate user name address
     mov eax, esi
-    mov ebx, 20         ; Each username entry is 20 bytes
+    mov ebx, 20
     mul ebx
     add eax, OFFSET valid_users
     mov edx, eax
+    mov eax, (gruvboxBg * 16) + gruvboxAqua ; User name in prompt color
+    call SetTextColor
     call WriteString
-
-    ; Display user's tickets
     mov al, ':'
     call WriteChar
     call Crlf
-
-    ; Display each ticket
+    mov eax, (gruvboxBg * 16) + gruvboxFg ; Reset to default for ticket details
+    call SetTextColor
     xor ecx, ecx
     movzx ecx, userTicketCount[esi]
     mov edi, 3 ; Each ticket record is now 3 bytes
@@ -440,52 +552,85 @@ next_ticket_display:
 next_user:
     inc esi
     dec ecx
-    jnz check_user_tickets_near
-    jmp after_check_user_loop
-check_user_tickets_near:
-    jmp check_user_tickets
-after_check_user_loop:
+    jnz check_user_tickets
 
     ; If no tickets found
     test bl, bl
     jnz show_admin_options
+    mov eax, (gruvboxBg * 16) + gruvboxRed
+    call SetTextColor
     mov edx, OFFSET noSalesMsg
     call WriteString
+    mov eax, (gruvboxBg * 16) + gruvboxFg
+    call SetTextColor
+    jmp show_admin_options  ; Continue to show options even if no tickets
+
+no_sales_data:
+    mov eax, (gruvboxBg * 16) + gruvboxRed
+    call SetTextColor
+    mov edx, OFFSET noSalesMsg
+    call WriteString
+    mov eax, (gruvboxBg * 16) + gruvboxFg
+    call SetTextColor
+    call Crlf
 
 show_admin_options:
     call Crlf
+    mov eax, (gruvboxBg * 16) + gruvboxAqua
+    call SetTextColor
     mov edx, OFFSET adminOptionsMsg
     call WriteString
+    
+    mov eax, (gruvboxBg * 16) + gruvboxFg ; Color for user input
+    call SetTextColor
     call ReadInt
     
     cmp al, 1
-    je check_user_type  ; Return to user type selection
+    je admin_exit_to_menu
     cmp al, 2
-    je exit_system
+    je exit_program_admin
     
+    mov eax, (gruvboxBg * 16) + gruvboxRed
+    call SetTextColor
     mov edx, OFFSET invalidChoiceMsg
     call WriteString
     jmp show_admin_options
 
-no_sales_data:
-    mov edx, OFFSET noSalesMsg
-    call WriteString
-    call Crlf
-    jmp show_admin_options
+admin_exit_to_menu:
+    mov al, 2    ; Return 2 to indicate admin flow was completed
+    ret          ; Return to main procedure
 
-exit_system:
-    INVOKE ExitProcess, 0
+exit_program_admin:
+    mov al, 0    ; Return 0 to indicate program should exit
+    ret
 
 user_flow:
-    ret    ; Continue with normal user flow
+    mov al, 1    ; Return 1 in AL to indicate normal user flow
+    ret
 check_user_type ENDP
 
 ; --- Module 1: Registration ---
 registration_login PROC
+    mov eax, (gruvboxBg * 16) + gruvboxFg
+    call SetTextColor ; Ensure default color at start of proc
+    call Clrscr
+    
+    ; Display User Login ASCII Art
+    mov eax, (gruvboxBg * 16) + gruvboxAqua
+    call SetTextColor
+    mov edx, OFFSET userLoginArt
+    call WriteString
+    call Crlf
+
 reg_login_start:
     ; Input Username
+    mov eax, (gruvboxBg * 16) + gruvboxAqua
+    call SetTextColor
     mov edx, OFFSET loginMsg
     call WriteString
+    
+    mov eax, (gruvboxBg * 16) + gruvboxFg ; Color for user input
+    call SetTextColor
     mov edx, OFFSET username
     mov ecx, SIZEOF username
     call ReadString
@@ -495,10 +640,14 @@ reg_login_start:
     je reg_username_empty
 
   ; Input Password with masking
+    mov eax, (gruvboxBg * 16) + gruvboxAqua
+    call SetTextColor
     mov edx, OFFSET passMsg
     call WriteString
     
     ; Initialize password input
+    mov eax, (gruvboxBg * 16) + gruvboxFg ; Color for user input (asterisks)
+    call SetTextColor
     mov edi, OFFSET password
     xor ecx, ecx             ; Character count
     
@@ -527,6 +676,8 @@ reg_read_char:
     mov al, '*'            
     call WriteChar         ; Show asterisk
     pop eax                ; Restore actual character
+    mov eax, (gruvboxBg * 16) + gruvboxFg ; Ensure input color is maintained
+    call SetTextColor
     jmp reg_read_char
 
 reg_handle_backspace:
@@ -545,11 +696,15 @@ reg_handle_backspace:
     call WriteChar
     mov al, 08h           ; Backspace
     call WriteChar
+    mov eax, (gruvboxBg * 16) + gruvboxFg ; Ensure input color is maintained
+    call SetTextColor
     jmp reg_read_char
 
 reg_end_password:
     mov byte ptr [edi], 0   ; Null terminate the password string
     call Crlf
+    mov eax, (gruvboxBg * 16) + gruvboxFg ; Reset color after password input
+    call SetTextColor
 
     ; Check for null password
     cmp ecx, 0
@@ -580,7 +735,7 @@ check_user:
 
 
 next_credential:
-    pop edi                    ; Restore pointers from stack
+    pop edi                    ; Restore registers from stack
     pop esi
     pop ecx                    ; Restore counter
     add esi, 20               ; Move to next username (20 bytes per entry)
@@ -589,6 +744,8 @@ next_credential:
     jnz check_user            ; Continue if more users to check
     
     ; If we get here, no match was found
+    mov eax, (gruvboxBg * 16) + gruvboxRed
+    call SetTextColor
     mov edx, OFFSET invalidLoginMsg
     call WriteString
     call Crlf
@@ -602,14 +759,22 @@ login_successful:
     pop ecx
 
     ; Display success messages
+    mov eax, (gruvboxBg * 16) + gruvboxGreen
+    call SetTextColor
     mov edx, OFFSET successMsg
     call WriteString
     
+    mov eax, (gruvboxBg * 16) + gruvboxFg
+    call SetTextColor
     mov edx, OFFSET welcomeMsg
     call WriteString
+    
+    mov eax, (gruvboxBg * 16) + gruvboxYellow
+    call SetTextColor
     mov edx, OFFSET username
     call WriteString
- ; Store current user index
+    
+    ; Store current user index
     mov eax, NUM_USERS
     sub eax, ecx        ; Calculate user index based on loop counter
     mov currentUserIndex, eax
@@ -620,6 +785,8 @@ reg_username_empty:
     jmp reg_login_start
 
 reg_password_empty:
+    mov eax, (gruvboxBg * 16) + gruvboxAqua
+    call SetTextColor
     mov edx, OFFSET passMsg
     call WriteString
     jmp reg_login_start
@@ -696,7 +863,7 @@ get_destination:
     cmp al, 1
     jl invalid_dest     ; If less than 1
     cmp al, 3
-    jg invalid_dest     ; If greater than 3
+    jg invalid_dest
     
     ; Check if destination equals departure
     mov bl, departChoice
@@ -1056,16 +1223,65 @@ service_type_selection ENDP
 
 ; --- Module 4: Promo ---
 promo_application PROC
+    mov eax, (gruvboxBg * 16) + gruvboxFg
+    call SetTextColor ; Ensure default color at start of proc
+
+    ; Display Promo ASCII Art
+    mov eax, (gruvboxBg * 16) + gruvboxPurple
+    call SetTextColor
+    mov edx, OFFSET promoAsciiArt
+    call WriteString
+    call Crlf
+
+    mov eax, (gruvboxBg * 16) + gruvboxAqua
+    call SetTextColor
     mov edx, OFFSET promoPrompt
     call WriteString
+    
+    mov eax, (gruvboxBg * 16) + gruvboxFg ; Color for user input
+    call SetTextColor
     call ReadInt
+    
     mov promoChoice, al
+    
+    ; Display brief confirmation of promo selection
+    mov eax, (gruvboxBg * 16) + gruvboxYellow
+    call SetTextColor
+    
+    cmp al, 0
+    je promo_none
+    cmp al, 1
+    je promo_elderly
+    cmp al, 2
+    je promo_kid
+    jmp promo_none ; Default case
+    
+promo_elderly:
+    mov edx, OFFSET promoElderlyMsg
+    jmp show_promo_confirm
+    
+promo_kid:
+    mov edx, OFFSET promoKidMsg
+    jmp show_promo_confirm
+    
+promo_none:
+    mov edx, OFFSET promoNoneMsg
+    
+show_promo_confirm:
+    call WriteString
+    call Crlf
+    
+    mov eax, (gruvboxBg * 16) + gruvboxFg ; Reset to default
+    call SetTextColor
     ret
 promo_application ENDP
 
 ; --- Module 5: Payment & SST ---
 payment_processing PROC
-    ; Get base price
+    mov eax, (gruvboxBg * 16) + gruvboxFg
+    call SetTextColor ; Ensure default color at start of proc
+    
+    ; Get base price based on service class
     movzx eax, serviceChoice
     cmp al, 1
     je business_price
@@ -1075,6 +1291,7 @@ business_price:
     mov ax, basePriceBusiness
 
 apply_promo:
+    ; Apply any applicable promo discount
     movzx ebx, promoChoice
     cmp bl, 1
     je elderly_discount
@@ -1091,7 +1308,9 @@ save_final:
     mov baseFinal, ax
 
     ; Display base amount
-    mov edx, OFFSET baseTotalMsg    ; Changed from inline string
+    mov eax, (gruvboxBg * 16) + gruvboxFg
+    call SetTextColor
+    mov edx, OFFSET baseTotalMsg
     call WriteString
     movzx eax, baseFinal
     call print_price
@@ -1107,8 +1326,13 @@ save_final:
     mov sstAmount, ax
 
     ; Display SST amount
+    mov eax, (gruvboxBg * 16) + gruvboxAqua
+    call SetTextColor
     mov edx, OFFSET sstMsg
     call WriteString
+    
+    mov eax, (gruvboxBg * 16) + gruvboxFg
+    call SetTextColor
     movzx eax, sstAmount
     call print_price
     call Crlf
@@ -1120,18 +1344,28 @@ save_final:
     mov paymentAmount, ax
 
     ; Display total amount
-    mov edx, OFFSET totalAmountMsg    ; Changed from inline string
+    mov eax, (gruvboxBg * 16) + gruvboxYellow
+    call SetTextColor
+    mov edx, OFFSET totalAmountMsg
     call WriteString
+    
+    mov eax, (gruvboxBg * 16) + gruvboxFg
+    call SetTextColor
     movzx eax, paymentAmount
     call print_price
     call Crlf
     call Crlf
 
-     ; Select payment merchant
 merchant_select:
+    mov eax, (gruvboxBg * 16) + gruvboxAqua
+    call SetTextColor
     mov edx, OFFSET paymentMerchantPrompt
     call WriteString
+    
+    mov eax, (gruvboxBg * 16) + gruvboxFg ; Color for user input
+    call SetTextColor
     call ReadInt
+    
     cmp al, 1
     jl invalid_merchant
     cmp al, 4
@@ -1140,12 +1374,16 @@ merchant_select:
     jmp get_payment
 
 invalid_merchant:
+    mov eax, (gruvboxBg * 16) + gruvboxRed
+    call SetTextColor
     mov edx, OFFSET invalidMerchantMsg
     call WriteString
     jmp merchant_select
 
 get_payment:
     ; Display total amount again for reference
+    mov eax, (gruvboxBg * 16) + gruvboxFg
+    call SetTextColor
     mov edx, OFFSET totalAmountMsg
     call WriteString
     movzx eax, paymentAmount
@@ -1153,17 +1391,19 @@ get_payment:
     call Crlf
 
 payment_input:
-   ; Get payment amount
+    mov eax, (gruvboxBg * 16) + gruvboxAqua
+    call SetTextColor
     mov edx, OFFSET paymentPrompt
     call WriteString
-    call ReadInt       ; Read integer part (whole ringgit)
-    mov ebx, 100      ; Convert to cents
-    mul ebx           ; EAX = ringgit * 100 (now in cents)
+    
+    mov eax, (gruvboxBg * 16) + gruvboxFg ; Color for user input
+    call SetTextColor
+    call ReadInt       ; Read integer (cents) directly into EAX
     mov inputAmount, eax
 
     ; Compare with required amount
     movzx ebx, paymentAmount
-    cmp eax, ebx      ; Compare input amount with required amount
+    cmp eax, ebx      ; Compare input amount (EAX) with required amount (EBX)
     jl insufficient_payment  ; Jump if input is less than required
 
     ; If we get here, payment is sufficient
@@ -1173,8 +1413,10 @@ payment_input:
     ; Display change amount if any
     cmp eax, 0
     je payment_exact
-    
+
     ; Show change amount
+    mov eax, (gruvboxBg * 16) + gruvboxFg
+    call SetTextColor
     mov edx, OFFSET changeMsg
     call WriteString
     mov eax, changeAmount
@@ -1183,10 +1425,15 @@ payment_input:
     jmp payment_done
 
 insufficient_payment:
+    mov eax, (gruvboxBg * 16) + gruvboxRed
+    call SetTextColor
     mov edx, OFFSET insufficientMsg
     call WriteString
+    
+    mov eax, (gruvboxBg * 16) + gruvboxFg
+    call SetTextColor
     movzx eax, paymentAmount
-    call print_price
+    call print_price ; Display required amount in RM format
     call Crlf
     jmp payment_input      ; Ask for payment again
 
@@ -1195,14 +1442,13 @@ payment_exact:
     mov changeAmount, 0    ; Ensure change is zero
     call Crlf
 
-    ; totalSales now tracks the actual ticket prices rather than payments received
 payment_done:
     ; Record sales data
     mov salesData, 1        ; Mark that we have sales data
     movzx eax, paymentAmount ; Get the actual ticket price (includes SST)
     add totalSales, eax     ; Add actual ticket price to total sales
-    inc totalTicketCount       ; Increment total ticket count
-    
+    inc totalTicketCount    ; Increment total ticket count
+
     ; Record ticket type
     movzx eax, serviceChoice
     cmp al, 1
@@ -1212,18 +1458,40 @@ payment_done:
 record_economy:
     inc economyCount
 sales_recorded:
+    mov eax, (gruvboxBg * 16) + gruvboxFg ; Reset to default color
+    call SetTextColor
     ret
 
 payment_processing ENDP
 
 ; --- Module 6: Display Receipt ---
 info_display PROC
+    mov eax, (gruvboxBg * 16) + gruvboxFg
+    call SetTextColor ; Reset to default color
+    call Clrscr
+    
+    ; Display Ticket ASCII Art
+    mov eax, (gruvboxBg * 16) + gruvboxYellow
+    call SetTextColor
+    mov edx, OFFSET ticketAsciiArt
+    call WriteString
+    call Crlf
+    
+    ; Display Receipt Header
+    mov eax, (gruvboxBg * 16) + gruvboxYellow
+    call SetTextColor
     mov edx, OFFSET receiptMsg
     call WriteString
+    call Crlf
 
     ; Show Departure
+    mov eax, (gruvboxBg * 16) + gruvboxAqua
+    call SetTextColor
     mov edx, OFFSET departureMsg
     call WriteString
+    
+    mov eax, (gruvboxBg * 16) + gruvboxFg
+    call SetTextColor
     movzx eax, departChoice      ; Get departure choice (1-3)
     dec eax                      ; Convert to 0-based index
     mov ebx, 20                  ; Each city entry is 20 bytes
@@ -1234,8 +1502,13 @@ info_display PROC
     call Crlf
 
     ; Show Destination
+    mov eax, (gruvboxBg * 16) + gruvboxAqua
+    call SetTextColor
     mov edx, OFFSET destMsg
     call WriteString
+    
+    mov eax, (gruvboxBg * 16) + gruvboxFg
+    call SetTextColor
     movzx eax, destChoice        ; Get destination choice (1-3)
     dec eax                      ; Convert to 0-based index
     mov ebx, 20                  ; Each city entry is 20 bytes
@@ -1245,9 +1518,14 @@ info_display PROC
     call WriteString
     call Crlf
 
-      ; Display Date
+    ; Display Date
+    mov eax, (gruvboxBg * 16) + gruvboxAqua
+    call SetTextColor
     mov edx, OFFSET dateDisplayMsg
     call WriteString
+    
+    mov eax, (gruvboxBg * 16) + gruvboxFg
+    call SetTextColor
     
     ; Display month name
     mov ebx, OFFSET monthNames
@@ -1344,34 +1622,56 @@ show_date_suffix:
     call Crlf
 
     ; Seat, Depart, Arrive
+    mov eax, (gruvboxBg * 16) + gruvboxAqua
+    call SetTextColor
     mov edx, OFFSET seatsMsg
     call WriteString
+    
+    mov eax, (gruvboxBg * 16) + gruvboxYellow ; Make the seat number stand out
+    call SetTextColor
     mov edx, OFFSET selectedSeat  ; Display the actual selected seat
     call WriteString
     call Crlf
 
+    mov eax, (gruvboxBg * 16) + gruvboxFg
+    call SetTextColor
     mov edx, OFFSET departMsg     ; Display departure time
     call WriteString
     mov edx, OFFSET arriveMsg     ; Display arrival time
     call WriteString
 
     ; SST
+    mov eax, (gruvboxBg * 16) + gruvboxAqua
+    call SetTextColor
     mov edx, OFFSET sstMsg
     call WriteString
+    
+    mov eax, (gruvboxBg * 16) + gruvboxFg
+    call SetTextColor
     movzx eax, sstAmount
     call print_price
     call Crlf
 
     ; Total Paid
+    mov eax, (gruvboxBg * 16) + gruvboxYellow
+    call SetTextColor
     mov edx, OFFSET totalMsg
     call WriteString
+    
+    mov eax, (gruvboxBg * 16) + gruvboxGreen ; Highlight total in green
+    call SetTextColor
     movzx eax, paymentAmount
     call print_price
     call Crlf
 
     ; Display payment method
+    mov eax, (gruvboxBg * 16) + gruvboxAqua
+    call SetTextColor
     mov edx, OFFSET selectedMerchant
     call WriteString
+    
+    mov eax, (gruvboxBg * 16) + gruvboxFg
+    call SetTextColor
     
     ; Display the selected merchant based on choice
     movzx eax, merchantChoice
@@ -1400,32 +1700,57 @@ display_amex:
 show_merchant:
     call WriteString
     call Crlf
+    
+    ; Display Amount Paid (actual user input)
+    mov eax, (gruvboxBg * 16) + gruvboxAqua
+    call SetTextColor
+    mov edx, OFFSET amountPaidMsg
+    call WriteString
+    
+    mov eax, (gruvboxBg * 16) + gruvboxFg
+    call SetTextColor
+    mov eax, inputAmount
+    call print_price
+    call Crlf
 
     ; Display change if any
     mov eax, changeAmount
     cmp eax, 0
     je receipt_done
+    
+    mov eax, (gruvboxBg * 16) + gruvboxAqua
+    call SetTextColor
     mov edx, OFFSET changeMsg
     call WriteString
+    
+    mov eax, (gruvboxBg * 16) + gruvboxFg
+    call SetTextColor
     mov eax, changeAmount
     call print_price
     call Crlf
 
 receipt_done:
- call Crlf
+    call Crlf
     
-   ; Store ticket information for current user
-mov esi, currentUserIndex
-movzx eax, userTicketCount[esi]    ; Get current count
-mov edi, 3                     ; Each ticket takes 3 bytes (SeatLetter, SeatNum, Promo)
-mul edi                        ; EAX = count * 3 (byte offset within this user's block)
-mov edi, MAX_TICKETS * 3       ; Size of one user's ticket block in bytes
-push eax                       ; Save the offset within the block
-mov eax, currentUserIndex
-mul edi                        ; EAX = userIndex * (MAX_TICKETS * 3)
-lea edi, ticketHistory[eax]    ; Point to start of user's storage block
-pop eax                        ; Restore the offset within the block
-add edi, eax                   ; Point to next free slot (start of 3-byte record)
+    ; Payment Success ASCII Art
+    mov eax, (gruvboxBg * 16) + gruvboxGreen
+    call SetTextColor
+    mov edx, OFFSET paymentSuccessArt
+    call WriteString
+    call Crlf
+    
+    ; Store ticket information for current user
+    mov esi, currentUserIndex
+    movzx eax, userTicketCount[esi]    ; Get current count
+    mov edi, 3                     ; Each ticket takes 3 bytes (SeatLetter, SeatNum, Promo)
+    mul edi                        ; EAX = count * 3 (byte offset within this user's block)
+    mov edi, MAX_TICKETS * 3       ; Size of one user's ticket block in bytes
+    push eax                       ; Save the offset within the block
+    mov eax, currentUserIndex
+    mul edi                        ; EAX = userIndex * (MAX_TICKETS * 3)
+    lea edi, ticketHistory[eax]    ; Point to start of user's storage block
+    pop eax                        ; Restore the offset within the block
+    add edi, eax                   ; Point to next free slot (start of 3-byte record)
 
     ; Store seat information and promo
     mov al, [selectedSeat]
@@ -1438,8 +1763,14 @@ add edi, eax                   ; Point to next free slot (start of 3-byte record
     inc BYTE PTR userTicketCount[esi] ; Increment ticket count for user
 
 show_logout_options:
+    call Crlf
+    mov eax, (gruvboxBg * 16) + gruvboxAqua
+    call SetTextColor
     mov edx, OFFSET logoutOptionsMsg
     call WriteString
+    
+    mov eax, (gruvboxBg * 16) + gruvboxFg ; Color for user input
+    call SetTextColor
     call ReadInt
     
     cmp al, 1
@@ -1448,11 +1779,15 @@ show_logout_options:
     je do_exit
     
     ; Invalid choice
+    mov eax, (gruvboxBg * 16) + gruvboxRed
+    call SetTextColor
     mov edx, OFFSET invalidChoiceMsg
     call WriteString
     jmp show_logout_options
 
 do_logout:
+    mov eax, (gruvboxBg * 16) + gruvboxFg ; Reset color
+    call SetTextColor
     jmp check_user_type    ; Return to user type selection
 
 do_exit:
